@@ -7,6 +7,8 @@ RUN npm install
 
 COPY . .
 
+RUN mkdir -p public/ort && cp -r node_modules/onnxruntime-web/dist/. public/ort/
+
 EXPOSE 5173
 
-CMD ["sh", "-c", "mkdir -p public/ort && cp -r node_modules/onnxruntime-web/dist/. public/ort/ && npm run dev"]
+CMD ["npm", "run", "dev"]
