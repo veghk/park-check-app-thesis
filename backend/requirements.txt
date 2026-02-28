@@ -5,3 +5,5 @@ django-cors-headers==4.3.*
 psycopg2-binary==2.9.*
 django-environ==0.11.*
 Pillow==10.3.*
+easyocr==1.7.*
+numpy

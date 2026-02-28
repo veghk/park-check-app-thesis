@@ -1,11 +1,13 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import { VitePWA } from "vite-plugin-pwa";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 export default defineConfig({
   plugins: [
+    basicSsl(),
     // Serve /ort/*.mjs files directly — Vite blocks dynamic import() of /public files,
     // but onnxruntime-web needs to import the JSEP module this way.
     {
@@ -34,7 +36,7 @@ export default defineConfig({
         name: "Park Check",
         short_name: "ParkCheck",
         description: "Parking enforcement plate checker",
-        theme_color: "#1e40af",
+        theme_color: "#15803d",
         background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",

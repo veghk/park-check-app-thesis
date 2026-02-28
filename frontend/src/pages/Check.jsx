@@ -15,7 +15,7 @@ const STATE = {
 };
 
 const MODEL_KEY = "plateDetector";
-const FRAME_SKIP = 3;
+const FRAME_SKIP = 6;
 const RESULT_DISPLAY_MS = 3000;
 
 const BOX_COLOR = {
@@ -148,43 +148,39 @@ export default function Check() {
     let cancelled = false;
 
     async function init() {
-      console.log("[Check] Initialising camera...");
       // Start camera first — always works regardless of model
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
+        const constraints = { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
-        console.log("[Check] Camera stream acquired");
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
-          console.log("[Check] Video playing");
         }
 
         stabilizerRef.current = new Stabilizer(checkPlate, 1000);
         setAppState(STATE.SCANNING);
       } catch (e) {
-        console.error("[Check] Camera error:", e);
         if (!cancelled) {
-          setErrorMsg("Camera access denied. Please allow camera permission.");
+          const msg =
+            e.name === "NotFoundError" || e.name === "DevicesNotFoundError"
+              ? "No camera found on this device."
+              : e.name === "NotAllowedError" || e.name === "PermissionDeniedError"
+              ? "Camera access denied. Please allow camera permission in your browser."
+              : `Camera error: ${e.message}`;
+          setErrorMsg(msg);
           setAppState(STATE.ERROR);
         }
         return;
       }
 
       // Load model in background — camera is already live
-      console.log("[Check] Loading model in background...");
       try {
         await getModel(MODEL_KEY);
-        if (!cancelled) {
-          console.log("[Check] Model ready — inference enabled");
-          setModelReady(true);
-        }
+        if (!cancelled) setModelReady(true);
       } catch (err) {
-        console.error("[Check] Model load failed:", err);
         // Model unavailable — camera still works, inference just won't run
         if (!cancelled) setModelFailed(true);
       }
