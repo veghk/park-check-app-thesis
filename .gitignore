@@ -33,6 +33,9 @@ dist/
 .pnp/
 .pnp.js
 
+# Auto-generated onnxruntime WASM files
+frontend/public/ort/
+
 # Vite
 *.local
 
