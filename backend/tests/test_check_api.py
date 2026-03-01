@@ -7,10 +7,10 @@ from .conftest import make_plate_image
 URL = "/api/check/"
 
 
-def _mock_reader(plate_text, confidence=0.95):
-    """Return a mock EasyOCR reader that always yields one result."""
+def _mock_recognizer(plate_text):
+    """Return a mock fast-plate-ocr recognizer that always yields one result."""
     mock = MagicMock()
-    mock.readtext.return_value = [([[0, 0], [100, 0], [100, 30], [0, 30]], plate_text, confidence)]
+    mock.run.return_value = [plate_text]
     return mock
 
 
@@ -39,7 +39,7 @@ def test_invalid_image_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_registered_plate(auth_client, plate_in_db):
-    with patch("api.views._get_reader", return_value=_mock_reader("ABC123")):
+    with patch("api.views._get_recognizer", return_value=_mock_recognizer("ABC123")):
         image = make_plate_image("ABC123")
         from django.core.files.uploadedfile import SimpleUploadedFile
         f = SimpleUploadedFile("plate.jpg", image.read(), content_type="image/jpeg")
@@ -49,29 +49,28 @@ def test_registered_plate(auth_client, plate_in_db):
     assert response.data["plate_text"] == "ABC123"
     assert response.data["registered"] is True
     assert response.data["owner_name"] == "Test Owner"
-    assert response.data["confidence"] == pytest.approx(0.95)
 
 
 @pytest.mark.django_db
 def test_unregistered_plate(auth_client):
-    with patch("api.views._get_reader", return_value=_mock_reader("ZZZ-999")):
-        image = make_plate_image("ZZZ-999")
+    with patch("api.views._get_recognizer", return_value=_mock_recognizer("ZZZ999")):
+        image = make_plate_image("ZZZ999")
         from django.core.files.uploadedfile import SimpleUploadedFile
         f = SimpleUploadedFile("plate.jpg", image.read(), content_type="image/jpeg")
         response = auth_client.post(URL, {"image": f}, format="multipart")
 
     assert response.status_code == 200
-    assert response.data["plate_text"] == "ZZZ-999"
+    assert response.data["plate_text"] == "ZZZ999"
     assert response.data["registered"] is False
     assert response.data["owner_name"] == ""
 
 
 @pytest.mark.django_db
 def test_empty_ocr_result(auth_client):
-    mock_reader = MagicMock()
-    mock_reader.readtext.return_value = []
+    mock_recognizer = MagicMock()
+    mock_recognizer.run.return_value = []
 
-    with patch("api.views._get_reader", return_value=mock_reader):
+    with patch("api.views._get_recognizer", return_value=mock_recognizer):
         image = make_plate_image()
         from django.core.files.uploadedfile import SimpleUploadedFile
         f = SimpleUploadedFile("plate.jpg", image.read(), content_type="image/jpeg")
@@ -80,4 +79,3 @@ def test_empty_ocr_result(auth_client):
     assert response.status_code == 200
     assert response.data["plate_text"] == ""
     assert response.data["registered"] is False
-    assert response.data["confidence"] == 0.0

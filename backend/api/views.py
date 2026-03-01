@@ -4,8 +4,8 @@ import os
 import re
 
 import cv2
-import easyocr
 import numpy as np
+from fast_plate_ocr import ONNXPlateRecognizer
 import onnxruntime as ort
 from PIL import Image
 from rest_framework import viewsets, permissions, views
@@ -24,7 +24,7 @@ User = get_user_model()
 # Lazy singletons
 # ---------------------------------------------------------------------------
 
-_ocr_reader = None
+_plate_recognizer = None
 _seg_session = None
 
 SEG_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'plate-segmentor.onnx')
@@ -34,13 +34,13 @@ SEG_INPUT_SIZE = 640
 PLATE_W, PLATE_H = 520, 110
 
 
-def _get_reader():
-    global _ocr_reader
-    if _ocr_reader is None:
-        logger.info("[OCR] Initialising EasyOCR reader (first call)…")
-        _ocr_reader = easyocr.Reader(["en"], gpu=False)
-        logger.info("[OCR] EasyOCR reader ready")
-    return _ocr_reader
+def _get_recognizer():
+    global _plate_recognizer
+    if _plate_recognizer is None:
+        logger.info("[OCR] Initialising fast-plate-ocr recognizer (first call)…")
+        _plate_recognizer = ONNXPlateRecognizer("european-plates-mobile-vit-v2-model")
+        logger.info("[OCR] fast-plate-ocr recognizer ready")
+    return _plate_recognizer
 
 
 def _get_seg_session():
@@ -63,62 +63,6 @@ def _get_seg_session():
 def _normalize_plate(text: str) -> str:
     """Keep only uppercase letters and digits — no hyphens, spaces, or symbols."""
     return re.sub(r"[^A-Z0-9]", "", text.upper())
-
-
-def _pick_plate_text(results, img_h, img_w):
-    """
-    Choose the plate number from EasyOCR results using spatial heuristics.
-
-    1. Filter out text boxes shorter than MIN_HEIGHT_RATIO of the image height
-       (eliminates country codes, slogans, stickers).
-    2. Group remaining boxes into rows by vertical alignment.
-    3. Within each row sort left→right and concatenate text.
-    4. Return the row with the largest total bounding-box area — that is the
-       main plate number — along with its average confidence.
-    """
-    MIN_HEIGHT_RATIO = 0.2
-
-    parsed = []
-    for bbox, text, conf in results:
-        xs = [p[0] for p in bbox]
-        ys = [p[1] for p in bbox]
-        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
-        h = y2 - y1
-        if h < img_h * MIN_HEIGHT_RATIO:
-            continue
-        parsed.append({"text": text, "conf": conf,
-                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                        "h": h, "cy": (y1 + y2) / 2})
-
-    if not parsed:
-        # Nothing passed the height filter — fall back to highest confidence
-        if not results:
-            return "", 0.0
-        best = max(results, key=lambda r: r[2])
-        return _normalize_plate(best[1]), float(best[2])
-
-    # Group into rows: two boxes belong to the same row when their vertical
-    # centres are within half of their average height
-    parsed.sort(key=lambda b: b["x1"])
-    rows = []
-    for box in parsed:
-        placed = False
-        for row in rows:
-            avg_h = (row[0]["h"] + box["h"]) / 2
-            if abs(row[0]["cy"] - box["cy"]) < avg_h * 0.5:
-                row.append(box)
-                placed = True
-                break
-        if not placed:
-            rows.append([box])
-
-    # Pick the row with the largest total area
-    best_row = max(rows, key=lambda r: sum((b["x2"]-b["x1"]) * b["h"] for b in r))
-    best_row.sort(key=lambda b: b["x1"])
-
-    merged = "".join(b["text"] for b in best_row)
-    avg_conf = sum(b["conf"] for b in best_row) / len(best_row)
-    return _normalize_plate(merged), float(avg_conf)
 
 
 def _order_corners(pts: np.ndarray) -> np.ndarray:
@@ -259,28 +203,18 @@ class CheckView(views.APIView):
         img_array  = np.array(ocr_source)
 
         try:
-            reader  = _get_reader()
-            results = reader.readtext(img_array, detail=1)
+            recognizer = _get_recognizer()
+            predictions = recognizer.run(img_array)
         except Exception as exc:
-            logger.exception("[OCR] EasyOCR failed: %s", exc)
+            logger.exception("[OCR] fast-plate-ocr failed: %s", exc)
             return Response({"error": "OCR processing failed."}, status=500)
 
-        logger.debug("[OCR] Raw results: %s", results)
-
-        if not results:
-            return Response({
-                "plate_text": "",
-                "confidence": 0.0,
-                "registered": False,
-                "owner_name": "",
-            })
-
-        img_h, img_w = img_array.shape[:2]
-        plate_text, confidence = _pick_plate_text(results, img_h, img_w)
+        raw_text   = predictions[0] if predictions else ""
+        plate_text = _normalize_plate(raw_text)
 
         logger.info(
-            "[OCR] Detected plate: %r (conf: %.2f, warped: %s)",
-            plate_text, confidence, warped is not None,
+            "[OCR] Detected plate: %r (raw: %r, warped: %s)",
+            plate_text, raw_text, warped is not None,
         )
 
         # Normalise stored plate numbers the same way before comparing
@@ -291,7 +225,6 @@ class CheckView(views.APIView):
 
         return Response({
             "plate_text": plate_text,
-            "confidence": confidence,
             "registered": plate is not None,
             "owner_name": plate.owner_name if plate else "",
         })

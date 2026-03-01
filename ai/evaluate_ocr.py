@@ -1,7 +1,7 @@
 """
 OCR Accuracy Evaluation
 =======================
-Runs test plate images through EasyOCR (same pipeline as the backend CheckView)
+Runs test plate images through fast-plate-ocr (same pipeline as the backend CheckView)
 and reports exact match accuracy, character error rate, and a per-image table.
 
 Setup:
@@ -16,14 +16,13 @@ ground_truth.json format:
 }
 """
 
-import io
 import json
 import os
 import re
 import sys
 
-import easyocr
 import numpy as np
+from fast_plate_ocr import ONNXPlateRecognizer
 from PIL import Image
 
 GROUND_TRUTH_PATH = os.path.join(os.path.dirname(__file__), "test_plates", "ground_truth.json")
@@ -80,8 +79,8 @@ def main():
         print("ground_truth.json has no text entries — add entries first.")
         sys.exit(1)
 
-    print("Loading EasyOCR (this may take a moment)...")
-    reader = easyocr.Reader(["en"], gpu=False)
+    print("Loading fast-plate-ocr (european-plates-mobile-vit-v2-model)...")
+    recognizer = ONNXPlateRecognizer("european-plates-mobile-vit-v2-model")
 
     results = []
     for filename, expected_raw in ground_truth.items():
@@ -100,22 +99,10 @@ def main():
             x1, y1 = max(0, x1 - 10), max(0, y1 - 10)
             x2, y2 = min(img.width, x2 + 10), min(img.height, y2 + 10)
             img = img.crop((x1, y1, x2, y2))
-            # Scale up small crops so EasyOCR has enough pixels to work with
-            cw, ch = img.size
-            if cw < 200:
-                scale = 200 / cw
-                img = img.resize((int(cw * scale), int(ch * scale)), Image.LANCZOS)
 
         img_array = np.array(img)
-        ocr_results = reader.readtext(img_array, detail=1)
-
-        if ocr_results:
-            best = max(ocr_results, key=lambda r: r[2])
-            predicted = normalize_plate(best[1])
-            confidence = float(best[2])
-        else:
-            predicted = ""
-            confidence = 0.0
+        predictions = recognizer.run(img_array)
+        predicted = normalize_plate(predictions[0]) if predictions else ""
 
         exact = predicted == expected
         char_err = cer(predicted, expected)
@@ -125,7 +112,6 @@ def main():
             "expected": expected,
             "predicted": predicted,
             "exact": exact,
-            "confidence": confidence,
             "cer": char_err,
         })
 
@@ -134,10 +120,10 @@ def main():
         sys.exit(1)
 
     # Print table
-    col = "{:<25} {:<12} {:<12} {:<7} {:<10} {:<6}"
-    print("\n" + "=" * 80)
-    print(col.format("File", "Expected", "Got", "Match", "Confidence", "CER"))
-    print("-" * 80)
+    col = "{:<25} {:<12} {:<12} {:<7} {:<6}"
+    print("\n" + "=" * 65)
+    print(col.format("File", "Expected", "Got", "Match", "CER"))
+    print("-" * 65)
     for r in results:
         match_str = "YES" if r["exact"] else "NO "
         print(col.format(
@@ -145,19 +131,16 @@ def main():
             r["expected"][:11],
             r["predicted"][:11],
             match_str,
-            f"{r['confidence']:.3f}",
             f"{r['cer']:.3f}",
         ))
-    print("=" * 80)
+    print("=" * 65)
 
     total = len(results)
     exact_matches = sum(1 for r in results if r["exact"])
-    avg_confidence = sum(r["confidence"] for r in results) / total
     avg_cer = sum(r["cer"] for r in results) / total
 
     print(f"\nResults ({total} images):")
     print(f"  Exact match accuracy : {exact_matches}/{total} = {exact_matches/total*100:.1f}%")
-    print(f"  Avg confidence       : {avg_confidence:.3f}")
     print(f"  Avg character error  : {avg_cer:.3f} ({avg_cer*100:.1f}%)")
 
 
