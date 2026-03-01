@@ -1,0 +1,90 @@
+{% extends "admin/base_site.html" %}
+{% block title %}Test Results Viewer | {{ site_title }}{% endblock %}
+
+{% block content %}
+<h1>Test Results Viewer</h1>
+
+{% if not images %}
+  <p class="help">
+    No result images found. Run <code>visualize_pipeline.py</code> first to generate test results.
+  </p>
+{% else %}
+
+<!-- Stats bar -->
+<p style="margin:8px 0; color:#666; font-size:13px;">
+  Image <strong>{{ idx|add:1 }}</strong> of <strong>{{ total }}</strong>
+  &nbsp;|&nbsp; <code>{{ current }}</code>
+  {% if gt_text %}
+    &nbsp;|&nbsp; Expected: <strong style="font-family:monospace">{{ gt_text }}</strong>
+  {% endif %}
+</p>
+
+<!-- Folder selector -->
+<div style="display:flex; gap:6px; margin:12px 0; flex-wrap:wrap;">
+  <span style="line-height:28px; font-weight:bold; font-size:13px; margin-right:4px;">View:</span>
+  {% for f in folders %}
+    <a href="?img={{ current }}&folder={{ f }}"
+       style="display:inline-block; padding:4px 14px; border-radius:4px; font-size:13px; text-decoration:none;
+              {% if f == folder %}
+                background:#417690; color:#fff; font-weight:bold;
+              {% else %}
+                background:#e8e8e8; color:#333;
+              {% endif %}">
+      {{ f }}
+    </a>
+  {% endfor %}
+</div>
+
+<!-- Images -->
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px;">
+
+  <div style="border:1px solid #ddd; border-radius:4px; padding:12px; background:#fafafa;">
+    <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#417690; margin-bottom:8px; letter-spacing:.05em;">
+      Original
+    </div>
+    <img src="{% url 'admin:api_testresult_img' 'orig' current %}"
+         style="max-width:100%; max-height:65vh; object-fit:contain; display:block; border-radius:2px;">
+  </div>
+
+  <div style="border:1px solid #ddd; border-radius:4px; padding:12px; background:#fafafa;">
+    <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#417690; margin-bottom:8px; letter-spacing:.05em;">
+      {{ folder }}
+    </div>
+    {% if has_result %}
+      <img src="{% url 'admin:api_testresult_img' folder current %}"
+           style="max-width:100%; max-height:65vh; object-fit:contain; display:block; border-radius:2px;">
+    {% else %}
+      <p style="color:#ba2121; font-size:13px;">No result image for <strong>{{ folder }}</strong>.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div style="display:flex; align-items:center; gap:8px; margin-top:16px; flex-wrap:wrap;">
+
+  {% if prev %}
+    <a href="?img={{ prev }}&folder={{ folder }}" class="button">&#8592; Prev</a>
+  {% else %}
+    <span class="button" style="opacity:.35; cursor:default;">&#8592; Prev</span>
+  {% endif %}
+
+  <select onchange="location.href='?img='+this.value+'&folder={{ folder }}'"
+          style="padding:4px 8px; font-size:13px; border:1px solid #ccc; border-radius:4px;">
+    {% for img in images %}
+      <option value="{{ img }}" {% if img == current %}selected{% endif %}>
+        {{ forloop.counter }}. {{ img }}
+      </option>
+    {% endfor %}
+  </select>
+
+  {% if next %}
+    <a href="?img={{ next }}&folder={{ folder }}" class="button">Next &#8594;</a>
+  {% else %}
+    <span class="button" style="opacity:.35; cursor:default;">Next &#8594;</span>
+  {% endif %}
+
+</div>
+
+{% endif %}
+{% endblock %}

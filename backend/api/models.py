@@ -21,3 +21,11 @@ class Plate(models.Model):
 
     def __str__(self):
         return self.plate_number
+
+
+class TestResult(models.Model):
+    """Proxy model — no DB table. Used only to register the test viewer in Django admin."""
+    class Meta:
+        managed = False
+        verbose_name = "Test Result"
+        verbose_name_plural = "Test Results"
