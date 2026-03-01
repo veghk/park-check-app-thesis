@@ -61,8 +61,64 @@ def _get_seg_session():
 # ---------------------------------------------------------------------------
 
 def _normalize_plate(text: str) -> str:
-    """Strip whitespace and non-alphanumeric characters except hyphens."""
-    return re.sub(r"[^A-Z0-9\-]", "", text.upper())
+    """Keep only uppercase letters and digits — no hyphens, spaces, or symbols."""
+    return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
+def _pick_plate_text(results, img_h, img_w):
+    """
+    Choose the plate number from EasyOCR results using spatial heuristics.
+
+    1. Filter out text boxes shorter than MIN_HEIGHT_RATIO of the image height
+       (eliminates country codes, slogans, stickers).
+    2. Group remaining boxes into rows by vertical alignment.
+    3. Within each row sort left→right and concatenate text.
+    4. Return the row with the largest total bounding-box area — that is the
+       main plate number — along with its average confidence.
+    """
+    MIN_HEIGHT_RATIO = 0.2
+
+    parsed = []
+    for bbox, text, conf in results:
+        xs = [p[0] for p in bbox]
+        ys = [p[1] for p in bbox]
+        x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+        h = y2 - y1
+        if h < img_h * MIN_HEIGHT_RATIO:
+            continue
+        parsed.append({"text": text, "conf": conf,
+                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                        "h": h, "cy": (y1 + y2) / 2})
+
+    if not parsed:
+        # Nothing passed the height filter — fall back to highest confidence
+        if not results:
+            return "", 0.0
+        best = max(results, key=lambda r: r[2])
+        return _normalize_plate(best[1]), float(best[2])
+
+    # Group into rows: two boxes belong to the same row when their vertical
+    # centres are within half of their average height
+    parsed.sort(key=lambda b: b["x1"])
+    rows = []
+    for box in parsed:
+        placed = False
+        for row in rows:
+            avg_h = (row[0]["h"] + box["h"]) / 2
+            if abs(row[0]["cy"] - box["cy"]) < avg_h * 0.5:
+                row.append(box)
+                placed = True
+                break
+        if not placed:
+            rows.append([box])
+
+    # Pick the row with the largest total area
+    best_row = max(rows, key=lambda r: sum((b["x2"]-b["x1"]) * b["h"] for b in r))
+    best_row.sort(key=lambda b: b["x1"])
+
+    merged = "".join(b["text"] for b in best_row)
+    avg_conf = sum(b["conf"] for b in best_row) / len(best_row)
+    return _normalize_plate(merged), float(avg_conf)
 
 
 def _order_corners(pts: np.ndarray) -> np.ndarray:
@@ -219,17 +275,19 @@ class CheckView(views.APIView):
                 "owner_name": "",
             })
 
-        best       = max(results, key=lambda r: r[2])
-        raw_text   = best[1]
-        confidence = float(best[2])
-        plate_text = _normalize_plate(raw_text)
+        img_h, img_w = img_array.shape[:2]
+        plate_text, confidence = _pick_plate_text(results, img_h, img_w)
 
         logger.info(
-            "[OCR] Detected plate: %r (raw: %r, conf: %.2f, warped: %s)",
-            plate_text, raw_text, confidence, warped is not None,
+            "[OCR] Detected plate: %r (conf: %.2f, warped: %s)",
+            plate_text, confidence, warped is not None,
         )
 
-        plate = Plate.objects.filter(plate_number__iexact=plate_text, is_active=True).first()
+        # Normalise stored plate numbers the same way before comparing
+        plate = Plate.objects.filter(is_active=True).extra(
+            where=["UPPER(REGEXP_REPLACE(plate_number, '[^A-Z0-9]', '', 'g')) = %s"],
+            params=[plate_text],
+        ).first()
 
         return Response({
             "plate_text": plate_text,

@@ -27,13 +27,13 @@ def auth_client(db_user):
 @pytest.fixture
 def plate_in_db(db):
     return Plate.objects.create(
-        plate_number="ABC-123",
+        plate_number="ABC123",
         owner_name="Test Owner",
         is_active=True,
     )
 
 
-def make_plate_image(text="ABC-123", size=(320, 100)):
+def make_plate_image(text="ABC123", size=(320, 100)):
     """Create a synthetic licence plate image (white bg, black text) as a JPEG BytesIO."""
     img = Image.new("RGB", size, color=(255, 255, 255))
     draw = ImageDraw.Draw(img)

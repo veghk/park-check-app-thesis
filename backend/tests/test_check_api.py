@@ -39,14 +39,14 @@ def test_invalid_image_returns_400(auth_client):
 
 @pytest.mark.django_db
 def test_registered_plate(auth_client, plate_in_db):
-    with patch("api.views._get_reader", return_value=_mock_reader("ABC-123")):
-        image = make_plate_image("ABC-123")
+    with patch("api.views._get_reader", return_value=_mock_reader("ABC123")):
+        image = make_plate_image("ABC123")
         from django.core.files.uploadedfile import SimpleUploadedFile
         f = SimpleUploadedFile("plate.jpg", image.read(), content_type="image/jpeg")
         response = auth_client.post(URL, {"image": f}, format="multipart")
 
     assert response.status_code == 200
-    assert response.data["plate_text"] == "ABC-123"
+    assert response.data["plate_text"] == "ABC123"
     assert response.data["registered"] is True
     assert response.data["owner_name"] == "Test Owner"
     assert response.data["confidence"] == pytest.approx(0.95)
