@@ -13,6 +13,13 @@ const REGISTRY = {
     url: "/models/plate-detector.onnx",
     inputSize: 640,
   },
+  plateOCR: {
+    name: "Plate OCR",
+    // Model file extracted from fast-plate-ocr (european-plates-mobile-vit-v2-model).
+    // Run: docker exec <web> python -c "from fast_plate_ocr import ONNXPlateRecognizer; r = ONNXPlateRecognizer('european-plates-mobile-vit-v2-model'); print(r.model_path)"
+    // then copy the .onnx file to frontend/public/models/plate-ocr.onnx
+    url: "/models/plate-ocr.onnx",
+  },
 };
 
 // Module-level cache — sessions survive component remounts within the same page session.
