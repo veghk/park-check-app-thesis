@@ -1,5 +1,7 @@
+import { STABILIZER_DELAY_MS, STABILIZER_TOLERANCE } from "../config";
+
 export class Stabilizer {
-  constructor(onStable, delayMs = 1000, moveTolerance = 10) {
+  constructor(onStable, delayMs = STABILIZER_DELAY_MS, moveTolerance = STABILIZER_TOLERANCE) {
     this.onStable = onStable;
     this.delayMs = delayMs;
     this.moveTolerance = moveTolerance;

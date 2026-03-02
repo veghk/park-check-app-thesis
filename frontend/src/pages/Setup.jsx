@@ -50,11 +50,8 @@ export default function Setup() {
 
   useEffect(() => {
     async function run() {
-      console.log("[Setup] Starting setup sequence");
       try {
-        console.log("[Setup] Loading model...");
         await getModel(MODEL_KEY);
-        console.log("[Setup] Model loaded — marking done");
         set("model", STATUS.DONE);
         set("ready", STATUS.LOADING);
 
@@ -63,16 +60,13 @@ export default function Setup() {
         set("ready", STATUS.DONE);
         await new Promise((r) => setTimeout(r, 400));
 
-        console.log("[Setup] Setup complete — navigating to home");
         navigate("/", { replace: true });
-      } catch (err) {
-        console.error("[Setup] Model load failed:", err);
+      } catch {
         set("model", STATUS.ERROR);
         setErrorMsg("Failed to load detection model. The app will work without real-time detection.");
 
         // Continue anyway after a short delay
         await new Promise((r) => setTimeout(r, 2000));
-        console.log("[Setup] Continuing without model — navigating to home");
         navigate("/", { replace: true });
       }
     }

@@ -36,7 +36,7 @@ export default function Home() {
           </svg>
         </button>
 
-        {/* History — coming soon */}
+        {/* History - maybe implement later */}
         <div className="w-full bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 opacity-40 cursor-not-allowed">
           <div className="bg-gray-50 rounded-xl p-3 shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -45,7 +45,7 @@ export default function Home() {
           </div>
           <div>
             <p className="font-semibold text-gray-900 text-sm">History</p>
-            <p className="text-xs text-gray-400 mt-0.5">Coming soon</p>
+            <p className="text-xs text-gray-400 mt-0.5">Maybe later</p>
           </div>
         </div>
       </div>

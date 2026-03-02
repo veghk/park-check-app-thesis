@@ -1,7 +1,8 @@
 import * as ort from "onnxruntime-web";
-import { getModel, getModelMeta } from "./modelRegistry";
+import { getModel } from "./modelRegistry";
+import { DETECTION_THRESHOLD, NMS_IOU_THRESHOLD } from "../config";
 
-const MODEL_KEY = "plateDetector";
+const INPUT_SIZE = 640;
 
 function preprocess(canvas, inputSize) {
   const offscreen = document.createElement("canvas");
@@ -30,7 +31,7 @@ function iou(a, b) {
   return inter / (aArea + bArea - inter);
 }
 
-function nms(boxes, iouThreshold = 0.45) {
+function nms(boxes, iouThreshold = NMS_IOU_THRESHOLD) {
   boxes.sort((a, b) => b.confidence - a.confidence);
   const kept = [];
   const suppressed = new Set();
@@ -44,20 +45,18 @@ function nms(boxes, iouThreshold = 0.45) {
   return kept;
 }
 
-export async function runDetection(canvas, threshold = 0.4) {
-  const session = await getModel(MODEL_KEY);
-  const meta = getModelMeta(MODEL_KEY);
-  const inputSize = meta.inputSize;
+export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
+  const model = await getModel("plateDetector");
 
-  const scaleX = canvas.width / inputSize;
-  const scaleY = canvas.height / inputSize;
+  const scaleX = canvas.width / INPUT_SIZE;
+  const scaleY = canvas.height / INPUT_SIZE;
 
-  const tensor = preprocess(canvas, inputSize);
-  const inputName = session.inputNames[0];
-  const inputTensor = new ort.Tensor("float32", tensor, [1, 3, inputSize, inputSize]);
-  const results = await session.run({ [inputName]: inputTensor });
+  const tensor = preprocess(canvas, INPUT_SIZE);
+  const inputName = model.inputNames[0];
+  const inputTensor = new ort.Tensor("float32", tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+  const results = await model.run({ [inputName]: inputTensor });
 
-  const output = results[session.outputNames[0]].data;
+  const output = results[model.outputNames[0]].data;
   const numDets = 8400;
   const boxes = [];
 

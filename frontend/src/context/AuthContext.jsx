@@ -11,14 +11,12 @@ export function AuthProvider({ children }) {
   });
 
   async function login(username, password) {
-    console.log("[Auth] Logging in as:", username);
     const { data } = await client.post("/api/auth/token/", { username, password });
     localStorage.setItem("access_token", data.access);
     localStorage.setItem("refresh_token", data.refresh);
     localStorage.setItem("user", JSON.stringify({ username }));
     setToken(data.access);
     setUser({ username });
-    console.log("[Auth] Login successful");
   }
 
   function logout() {

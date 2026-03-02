@@ -1,26 +1,30 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import BottomNav from "../components/BottomNav";
+import { Stabilizer } from "../utils/stabilizer";
 import { runDetection } from "../utils/detector";
 import { getModel } from "../utils/modelRegistry";
 import { runOCR } from "../utils/ocr";
-import { Stabilizer } from "../utils/stabilizer";
+import BottomNav from "../components/BottomNav";
 import client from "../api/client";
+import {
+  FRAME_SKIP,
+  RESULT_DISPLAY_MS,
+  CAMERA_WIDTH,
+  CAMERA_HEIGHT,
+  STABILIZER_DELAY_MS,
+} from "../config";
 
 const STATE = {
   LOADING_MODEL: "loading_model",
   SCANNING:      "scanning",
-  OCR:           "ocr",       // crop captured, running OCR in browser
-  CHECKING:      "checking",  // OCR done, waiting for backend DB response
-  RESULT:        "result",    // result received and shown
-  OFFLINE:       "offline",   // no internet — plate queued locally
+  OCR:           "ocr",
+  CHECKING:      "checking",
+  RESULT:        "result",
+  OFFLINE:       "offline",
   ERROR:         "error",
 };
 
-const MODEL_KEY         = "plateDetector";
-const FRAME_SKIP        = 6;
-const RESULT_DISPLAY_MS = 3000;
-const PENDING_KEY       = "parkcheck_pending";
+const PENDING_KEY = "parkcheck_pending";
 
 const BOX_COLOR = {
   scanning:     "#9ca3af",
@@ -28,10 +32,6 @@ const BOX_COLOR = {
   unregistered: "#ef4444",
   offline:      "#6b7280",
 };
-
-// ---------------------------------------------------------------------------
-// Offline queue helpers
-// ---------------------------------------------------------------------------
 
 function getPending() {
   try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); }
@@ -44,15 +44,10 @@ function addPending(plateText) {
   localStorage.setItem(PENDING_KEY, JSON.stringify(q));
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
 export default function Check() {
   const navigate = useNavigate();
   const videoRef       = useRef(null);
   const overlayRef     = useRef(null);
-  const offscreenRef   = useRef(null);
   const streamRef      = useRef(null);
   const rafRef         = useRef(null);
   const frameCountRef  = useRef(0);
@@ -87,7 +82,6 @@ export default function Check() {
     canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
   }, []);
 
-  // Flush queued offline checks to backend
   const syncPending = useCallback(async () => {
     const pending = getPending();
     if (!pending.length) return;
@@ -103,33 +97,28 @@ export default function Check() {
     setPendingCount(remaining.length);
   }, []);
 
-  // Core check: crop → OCR (browser) → backend DB check (or offline queue)
   const checkPlate = useCallback(async (box) => {
     const video = videoRef.current;
     if (!video) return;
 
-    // 1. Crop the plate region from video
+    // crop plate region from video frame
     const { x1, y1, x2, y2 } = box;
     const crop = document.createElement("canvas");
     crop.width  = Math.max(1, x2 - x1);
     crop.height = Math.max(1, y2 - y1);
-    crop.getContext("2d").drawImage(
-      video, x1, y1, crop.width, crop.height,
-      0, 0, crop.width, crop.height,
-    );
+    crop.getContext("2d").drawImage(video, x1, y1, crop.width, crop.height, 0, 0, crop.width, crop.height);
 
-    // 2. Run OCR in the browser
+    // run OCR in browser
     setAppState(STATE.OCR);
     const plateText = await runOCR(crop);
 
     if (!plateText) {
-      // OCR returned nothing — model not loaded yet or unreadable plate
       setAppState(STATE.SCANNING);
       stabilizerRef.current?.reset();
       return;
     }
 
-    // 3. Send plate text to backend, or queue if offline
+    // queue locally if offline, otherwise check against backend
     if (!navigator.onLine) {
       addPending(plateText);
       setPendingCount(getPending().length);
@@ -161,11 +150,9 @@ export default function Check() {
     }
   }, [drawBoxes, clearCanvas]);
 
-  // Detection loop — runs every FRAME_SKIP frames
   const startLoop = useCallback(() => {
     if (!videoRef.current) return;
     const offscreen = document.createElement("canvas");
-    offscreenRef.current = offscreen;
 
     const loop = async () => {
       const video = videoRef.current;
@@ -187,7 +174,7 @@ export default function Check() {
             drawBoxes(best ? [best] : [], BOX_COLOR.scanning);
             stabilizerRef.current?.update(best);
           } catch {
-            // non-fatal — skip frame
+            // skip frame on error
           }
         }
       }
@@ -205,14 +192,13 @@ export default function Check() {
     streamRef.current = null;
   }, []);
 
-  // Init camera + load detection model
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: CAMERA_WIDTH }, height: { ideal: CAMERA_HEIGHT } },
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
@@ -220,7 +206,7 @@ export default function Check() {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        stabilizerRef.current = new Stabilizer(checkPlate, 1000);
+        stabilizerRef.current = new Stabilizer(checkPlate, STABILIZER_DELAY_MS);
         setAppState(STATE.SCANNING);
       } catch (e) {
         if (cancelled) return;
@@ -234,7 +220,7 @@ export default function Check() {
       }
 
       try {
-        await getModel(MODEL_KEY);
+        await getModel("plateDetector");
         if (!cancelled) setModelReady(true);
       } catch {
         if (!cancelled) setModelFailed(true);
@@ -245,7 +231,6 @@ export default function Check() {
     return () => { cancelled = true; stopAll(); };
   }, [checkPlate, stopAll]);
 
-  // Sync queued checks when network comes back
   useEffect(() => {
     window.addEventListener("online", syncPending);
     return () => window.removeEventListener("online", syncPending);
@@ -274,7 +259,6 @@ export default function Check() {
         <canvas ref={overlayRef}
           className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
 
-        {/* Detection model loading bar */}
         {isScanning && !modelReady && !modelFailed && (
           <div className="absolute top-0 left-0 right-0 pointer-events-none">
             <div className="h-1 bg-white/10 overflow-hidden">
@@ -289,7 +273,6 @@ export default function Check() {
           </div>
         )}
 
-        {/* Pending offline sync counter */}
         {pendingCount > 0 && isScanning && (
           <div className="absolute top-4 right-4">
             <span className="bg-gray-700/80 text-white text-xs px-2.5 py-1 rounded-full">
@@ -298,7 +281,6 @@ export default function Check() {
           </div>
         )}
 
-        {/* Scanning hint */}
         {isScanning && (
           <div className="absolute bottom-24 left-0 right-0 flex flex-col items-center gap-2 pointer-events-none">
             {modelFailed  && <span className="bg-black/50 text-white/60 text-xs px-3 py-1 rounded-full">Detection unavailable — no model loaded</span>}
@@ -307,27 +289,15 @@ export default function Check() {
           </div>
         )}
 
-        {/* OCR in progress */}
-        {appState === STATE.OCR && (
+        {(appState === STATE.OCR || appState === STATE.CHECKING) && (
           <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none">
             <span className="bg-black/60 text-white text-xs px-3 py-1 rounded-full flex items-center gap-2">
               <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              Reading plate…
+              {appState === STATE.OCR ? "Reading plate…" : "Checking registration…"}
             </span>
           </div>
         )}
 
-        {/* Backend check in progress */}
-        {appState === STATE.CHECKING && (
-          <div className="absolute bottom-24 left-0 right-0 flex justify-center pointer-events-none">
-            <span className="bg-black/60 text-white text-xs px-3 py-1 rounded-full flex items-center gap-2">
-              <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              Checking registration…
-            </span>
-          </div>
-        )}
-
-        {/* Offline — check queued */}
         {appState === STATE.OFFLINE && (
           <div className="absolute bottom-24 left-0 right-0 flex justify-center">
             <div className="bg-gray-700/90 px-5 py-3 rounded-xl text-white text-center shadow-lg">
@@ -337,7 +307,6 @@ export default function Check() {
           </div>
         )}
 
-        {/* Result */}
         {appState === STATE.RESULT && result && (
           <div className="absolute bottom-24 left-0 right-0 flex justify-center">
             <div className={`px-5 py-3 rounded-xl text-white text-center shadow-lg ${result.registered ? "bg-green-600" : "bg-red-500"}`}>
@@ -349,7 +318,6 @@ export default function Check() {
           </div>
         )}
 
-        {/* Error */}
         {appState === STATE.ERROR && (
           <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center px-8 gap-5">
             <p className="text-white text-center text-sm">{errorMsg}</p>
