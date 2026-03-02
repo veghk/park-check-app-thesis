@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Plate
@@ -16,3 +18,6 @@ class PlateSerializer(serializers.ModelSerializer):
         model = Plate
         fields = ["id", "plate_number", "owner_name", "notes", "is_active", "created_at", "updated_at"]
         read_only_fields = ["created_at", "updated_at"]
+
+    def validate_plate_number(self, value):
+        return re.sub(r"[^A-Z0-9]", "", value.upper())

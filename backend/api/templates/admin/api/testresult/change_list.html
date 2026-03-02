@@ -1,4 +1,11 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'admin/api/testresult/viewer.css' %}">
+{% endblock %}
+
 {% block title %}Test Results Viewer | {{ site_title }}{% endblock %}
 
 {% block content %}
@@ -10,67 +17,29 @@
   </p>
 {% else %}
 
-<!-- Stats bar -->
-<p style="margin:8px 0; color:#666; font-size:13px;">
+<p class="tr-stats">
   Image <strong>{{ idx|add:1 }}</strong> of <strong>{{ total }}</strong>
   &nbsp;|&nbsp; <code>{{ current }}</code>
   {% if gt_text %}
-    &nbsp;|&nbsp; Expected: <strong style="font-family:monospace">{{ gt_text }}</strong>
+    &nbsp;|&nbsp; Expected: <strong class="tr-gt">{{ gt_text }}</strong>
   {% endif %}
 </p>
 
-<!-- Folder selector -->
-<div style="display:flex; gap:6px; margin:12px 0; flex-wrap:wrap;">
-  <span style="line-height:28px; font-weight:bold; font-size:13px; margin-right:4px;">View:</span>
+<div class="tr-folder-bar">
+  <span class="label">View:</span>
   {% for f in folders %}
-    <a href="?img={{ current }}&folder={{ f }}"
-       style="display:inline-block; padding:4px 14px; border-radius:4px; font-size:13px; text-decoration:none;
-              {% if f == folder %}
-                background:#417690; color:#fff; font-weight:bold;
-              {% else %}
-                background:#e8e8e8; color:#333;
-              {% endif %}">
-      {{ f }}
-    </a>
+    <a href="?img={{ current }}&folder={{ f }}" {% if f == folder %}class="active"{% endif %}>{{ f }}</a>
   {% endfor %}
 </div>
 
-<!-- Images -->
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px;">
-
-  <div style="border:1px solid #ddd; border-radius:4px; padding:12px; background:#fafafa;">
-    <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#417690; margin-bottom:8px; letter-spacing:.05em;">
-      Original
-    </div>
-    <img src="{% url 'admin:api_testresult_img' 'orig' current %}"
-         style="max-width:100%; max-height:65vh; object-fit:contain; display:block; border-radius:2px;">
-  </div>
-
-  <div style="border:1px solid #ddd; border-radius:4px; padding:12px; background:#fafafa;">
-    <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#417690; margin-bottom:8px; letter-spacing:.05em;">
-      {{ folder }}
-    </div>
-    {% if has_result %}
-      <img src="{% url 'admin:api_testresult_img' folder current %}"
-           style="max-width:100%; max-height:65vh; object-fit:contain; display:block; border-radius:2px;">
-    {% else %}
-      <p style="color:#ba2121; font-size:13px;">No result image for <strong>{{ folder }}</strong>.</p>
-    {% endif %}
-  </div>
-
-</div>
-
-<!-- Navigation -->
-<div style="display:flex; align-items:center; gap:8px; margin-top:16px; flex-wrap:wrap;">
-
+<div class="tr-nav">
   {% if prev %}
-    <a href="?img={{ prev }}&folder={{ folder }}" class="button">&#8592; Prev</a>
+    <a href="?img={{ prev }}&folder={{ folder }}" class="button">Prev</a>
   {% else %}
-    <span class="button" style="opacity:.35; cursor:default;">&#8592; Prev</span>
+    <span class="button disabled">Prev</span>
   {% endif %}
 
-  <select onchange="location.href='?img='+this.value+'&folder={{ folder }}'"
-          style="padding:4px 8px; font-size:13px; border:1px solid #ccc; border-radius:4px;">
+  <select onchange="location.href='?img='+this.value+'&folder={{ folder }}'">
     {% for img in images %}
       <option value="{{ img }}" {% if img == current %}selected{% endif %}>
         {{ forloop.counter }}. {{ img }}
@@ -79,11 +48,26 @@
   </select>
 
   {% if next %}
-    <a href="?img={{ next }}&folder={{ folder }}" class="button">Next &#8594;</a>
+    <a href="?img={{ next }}&folder={{ folder }}" class="button">Next</a>
   {% else %}
-    <span class="button" style="opacity:.35; cursor:default;">Next &#8594;</span>
+    <span class="button disabled">Next</span>
   {% endif %}
+</div>
 
+<div class="tr-grid">
+  <div class="tr-panel">
+    <div class="panel-label">Original</div>
+    <img src="{% url 'admin:api_testresult_img' 'orig' current %}">
+  </div>
+
+  <div class="tr-panel">
+    <div class="panel-label">{{ folder }}</div>
+    {% if has_result %}
+      <img src="{% url 'admin:api_testresult_img' folder current %}">
+    {% else %}
+      <p class="no-result">No result image for <strong>{{ folder }}</strong>.</p>
+    {% endif %}
+  </div>
 </div>
 
 {% endif %}

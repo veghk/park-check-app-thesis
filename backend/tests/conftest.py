@@ -1,6 +1,4 @@
-import io
 import pytest
-from PIL import Image, ImageDraw
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -31,14 +29,3 @@ def plate_in_db(db):
         owner_name="Test Owner",
         is_active=True,
     )
-
-
-def make_plate_image(text="ABC123", size=(320, 100)):
-    """Create a synthetic licence plate image (white bg, black text) as a JPEG BytesIO."""
-    img = Image.new("RGB", size, color=(255, 255, 255))
-    draw = ImageDraw.Draw(img)
-    draw.text((20, 35), text, fill=(0, 0, 0))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=95)
-    buf.seek(0)
-    return buf
