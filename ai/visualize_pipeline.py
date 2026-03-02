@@ -1,21 +1,19 @@
 """
-Full Pipeline Visualiser (segmentation + perspective warp)
-==========================================================
-Selects the 15 best-detected images and produces five output folders:
+Picks the 15 best-detected test images and saves visualisations to test_plates_results/.
 
-  test_plates_results/
-    test/       original images (unchanged)
-    detection/  full image with predicted polygon drawn
-    warp/       perspective-warped plate crop (flat, like a scanner)
-    ocr/        warp with OCR text drawn on it
-    pipeline/   full image: GT box + prediction polygon + OCR label
+Output folders:
+  test/       original images
+  detection/  predicted polygon drawn on the full image
+  warp/       perspective-corrected plate crop
+  ocr/        warp with OCR result overlaid
+  pipeline/   everything together: GT box, polygon, OCR label
 
-Best = highest IoU × confidence among all 40 test images.
+"Best" = highest IoU x confidence score across all test images.
 
-Run (from project root):
-  docker-compose run --rm \\
-    -v $(pwd)/ai:/ai \\
-    -v $(pwd)/frontend/public/models:/frontend/public/models \\
+Run from project root:
+  docker-compose run --rm \
+    -v $(pwd)/ai:/ai \
+    -v $(pwd)/frontend/public/models:/frontend/public/models \
     web python3 /ai/visualize_pipeline.py
 """
 
@@ -77,13 +75,13 @@ def iou(a, b):
 
 
 def bbox_from_corners(corners):
-    """Return [x1, y1, x2, y2] axis-aligned bbox for a set of polygon corners."""
+    """Returns [x1, y1, x2, y2] bounding box around a polygon."""
     xs, ys = corners[:, 0], corners[:, 1]
     return [xs.min(), ys.min(), xs.max(), ys.max()]
 
 
 def order_corners(pts):
-    """Sort 4 points into TL, TR, BR, BL order."""
+    """Sorts 4 corners into TL, TR, BR, BL order for perspective transform."""
     pts = pts[np.argsort(pts[:, 0])]
     left  = pts[:2][np.argsort(pts[:2, 1])]
     right = pts[2:][np.argsort(pts[2:, 1])]
@@ -92,12 +90,10 @@ def order_corners(pts):
 
 def detect_and_warp(session, img):
     """
-    Run segmentation model.
-    Returns (warped_pil, corners_px, det_conf) or (None, None, 0).
-
-    NOTE: The current detection model is a *detection* model (output [1,5,8400]).
-    When you replace it with the segmentation model (output [1,37,8400] + protos),
-    swap the block marked DETECTION MODEL with the SEGMENTATION MODEL block below.
+    Runs the model and returns (warped_plate, corners, confidence).
+    Returns (None, None, 0) if nothing was detected.
+    Currently uses the detection model - when switching to segmentation,
+    swap the block below marked DETECTION MODEL with SEGMENTATION MODEL.
     """
     tensor, orig_w, orig_h = preprocess(img)
     outputs = session.run(None, {session.get_inputs()[0].name: tensor})
@@ -105,7 +101,7 @@ def detect_and_warp(session, img):
     num_outputs = len(outputs)
 
     if num_outputs == 1:
-        # ── DETECTION MODEL (current): output [1, 5, 8400] ──────────────────
+        # DETECTION MODEL (current): output [1, 5, 8400]
         pred = outputs[0][0]   # [5, 8400]
         confs = pred[4, :]
         best_idx = int(confs.argmax())
@@ -120,7 +116,7 @@ def detect_and_warp(session, img):
         corners = np.array([[x1,y1],[x2,y1],[x2,y2],[x1,y2]], dtype=np.float32)
 
     else:
-        # ── SEGMENTATION MODEL (new): output0 [1,37,8400] + output1 [1,32,160,160] ─
+        # SEGMENTATION MODEL (new): output0 [1,37,8400] + output1 [1,32,160,160]
         pred   = outputs[0][0]   # [37, 8400]
         protos = outputs[1][0]   # [32, 160, 160]
 
@@ -287,7 +283,7 @@ def main():
         else:
             miss += 1
         print(f"  {filename[:36]:36s}  {'OK  ' if box_iou >= IOU_THRESHOLD else 'MISS'}  "
-              f"ocr={ocr_text or '—'}  IoU={box_iou:.2f}")
+              f"ocr={ocr_text or '-'}  IoU={box_iou:.2f}")
 
     total = ok + miss
     print(f"\nSaved to {OUT_ROOT}/")
