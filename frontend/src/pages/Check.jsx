@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stabilizer } from "../utils/stabilizer";
-import { runDetection } from "../utils/detector";
+import { runDetection, warpPlate } from "../utils/detector";
 import { getModel } from "../utils/modelRegistry";
 import { runOCR } from "../utils/ocr";
 import BottomNav from "../components/BottomNav";
@@ -69,10 +69,18 @@ export default function Check() {
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    boxes.forEach(({ x1, y1, x2, y2 }) => {
-      ctx.strokeStyle = color;
-      ctx.lineWidth   = 3;
-      ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 3;
+    boxes.forEach((box) => {
+      if (box.corners) {
+        ctx.beginPath();
+        ctx.moveTo(box.corners[0][0], box.corners[0][1]);
+        for (let i = 1; i < box.corners.length; i++) ctx.lineTo(box.corners[i][0], box.corners[i][1]);
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
+      }
     });
   }, []);
 
@@ -101,12 +109,18 @@ export default function Check() {
     const video = videoRef.current;
     if (!video) return;
 
-    // crop plate region from video frame
-    const { x1, y1, x2, y2 } = box;
-    const crop = document.createElement("canvas");
-    crop.width  = Math.max(1, x2 - x1);
-    crop.height = Math.max(1, y2 - y1);
-    crop.getContext("2d").drawImage(video, x1, y1, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    // perspective-correct the plate if segmentation corners are available,
+    // otherwise fall back to a plain rectangular crop
+    let crop;
+    if (box.corners) {
+      crop = warpPlate(video, box.corners);
+    } else {
+      const { x1, y1, x2, y2 } = box;
+      crop = document.createElement("canvas");
+      crop.width  = Math.max(1, x2 - x1);
+      crop.height = Math.max(1, y2 - y1);
+      crop.getContext("2d").drawImage(video, x1, y1, crop.width, crop.height, 0, 0, crop.width, crop.height);
+    }
 
     // run OCR in browser
     setAppState(STATE.OCR);

@@ -4,7 +4,7 @@ import * as ort from "onnxruntime-web";
 ort.env.wasm.wasmPaths = "/ort/";
 
 const REGISTRY = {
-  plateDetector: { url: "/models/plate-detector.onnx" },
+  plateDetector: { url: "/models/plate-segmentor.onnx" },
   plateOCR:      { url: "/models/plate-ocr.onnx" },
 };
 

@@ -31,11 +31,11 @@ from PIL import Image, ImageDraw, ImageFont
 GROUND_TRUTH_PATH = "/ai/test_plates/ground_truth.json"
 TEST_PLATES_DIR   = "/ai/test_plates"
 OUT_ROOT          = "/ai/test_plates_results"
-MODEL_PATH        = "/frontend/public/models/plate-detector.onnx"
+MODEL_PATH        = "/frontend/public/models/plate-segmentor.onnx"
 
 CONF_THRESHOLD = 0.4
 IOU_THRESHOLD  = 0.5
-INPUT_SIZE     = 640
+INPUT_SIZE     = 416
 TOP_N          = 15
 PLATE_W        = 520
 PLATE_H        = 110
@@ -116,9 +116,10 @@ def detect_and_warp(session, img):
         corners = np.array([[x1,y1],[x2,y1],[x2,y2],[x1,y2]], dtype=np.float32)
 
     else:
-        # SEGMENTATION MODEL (new): output0 [1,37,8400] + output1 [1,32,160,160]
-        pred   = outputs[0][0]   # [37, 8400]
-        protos = outputs[1][0]   # [32, 160, 160]
+        # SEGMENTATION MODEL: output0 [1,37,numDets] + output1 [1,32,protoH,protoW]
+        pred   = outputs[0][0]   # [37, numDets]
+        protos = outputs[1][0]   # [32, protoH, protoW]
+        _, protoH, protoW = protos.shape
 
         confs = pred[4, :]
         best_idx = int(confs.argmax())
@@ -132,11 +133,13 @@ def detect_and_warp(session, img):
 
         mask_coeffs = pred[5:37, best_idx]
         mask_flat   = mask_coeffs @ protos.reshape(32, -1)
-        mask        = (1.0 / (1.0 + np.exp(-mask_flat))).reshape(160, 160)
+        mask        = (1.0 / (1.0 + np.exp(-mask_flat))).reshape(protoH, protoW)
 
-        mx1, my1 = max(0, int(bx1/4)), max(0, int(by1/4))
-        mx2, my2 = min(160, int(bx2/4)), min(160, int(by2/4))
-        full_mask = np.zeros((160, 160), dtype=np.float32)
+        mx1 = max(0, int(bx1 * protoW / INPUT_SIZE))
+        my1 = max(0, int(by1 * protoH / INPUT_SIZE))
+        mx2 = min(protoW, int(bx2 * protoW / INPUT_SIZE))
+        my2 = min(protoH, int(by2 * protoH / INPUT_SIZE))
+        full_mask = np.zeros((protoH, protoW), dtype=np.float32)
         if mx2 > mx1 and my2 > my1:
             full_mask[my1:my2, mx1:mx2] = mask[my1:my2, mx1:mx2]
 
