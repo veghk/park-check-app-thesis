@@ -1,13 +1,13 @@
 """
 ONNX Detection Accuracy Evaluation
 ====================================
-Evaluates the trained plate-detector.onnx model on test images with
+Evaluates the plate-segmentor.onnx model on test images with
 ground-truth bounding boxes. Reports detection rate and mean IoU.
 
 Setup:
-  1. Add plate photos to  ai/test_plates/
-  2. Fill ai/test_plates/ground_truth.json with bounding boxes (see format below)
-  3. Run:  python ai/evaluate_detection.py
+  1. Add plate photos to  backend/eval/test_plates/
+  2. Fill backend/eval/test_plates/ground_truth.json with bounding boxes (see format below)
+  3. Run:  python backend/eval/evaluate_detection.py
 
 ground_truth.json format (pixel coordinates, x1 y1 x2 y2):
 {
@@ -26,13 +26,16 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
-GROUND_TRUTH_PATH = os.path.join(os.path.dirname(__file__), "test_plates", "ground_truth.json")
-TEST_PLATES_DIR = os.path.join(os.path.dirname(__file__), "test_plates")
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "frontend", "public", "models", "plate-detector.onnx")
+_HERE         = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
+
+GROUND_TRUTH_PATH = os.path.join(_HERE, "test_plates", "ground_truth.json")
+TEST_PLATES_DIR   = os.path.join(_HERE, "test_plates")
+MODEL_PATH        = os.path.join(_PROJECT_ROOT, "frontend", "public", "models", "plate-segmentor.onnx")
 
 CONF_THRESHOLD = 0.4
-IOU_THRESHOLD = 0.5
-INPUT_SIZE = 640
+IOU_THRESHOLD  = 0.5
+INPUT_SIZE     = 416
 
 
 def preprocess(image_path: str):
@@ -40,7 +43,7 @@ def preprocess(image_path: str):
     orig_w, orig_h = img.size
     resized = img.resize((INPUT_SIZE, INPUT_SIZE))
     arr = np.array(resized, dtype=np.float32) / 255.0
-    tensor = arr.transpose(2, 0, 1)[np.newaxis, :]  # [1, 3, 640, 640]
+    tensor = arr.transpose(2, 0, 1)[np.newaxis, :]  # [1, 3, 416, 416]
     return tensor, orig_w, orig_h
 
 
@@ -56,30 +59,29 @@ def iou(a, b):
 
 
 def run_detection(session, tensor, orig_w, orig_h):
-    input_name = session.get_inputs()[0].name
-    output = session.run(None, {input_name: tensor})[0]  # [1, 5, 8400]
-    data = output[0]  # [5, 8400]
-    num_dets = data.shape[1]
+    outputs = session.run(None, {session.get_inputs()[0].name: tensor})
     scale_x = orig_w / INPUT_SIZE
     scale_y = orig_h / INPUT_SIZE
 
-    best_conf = 0.0
-    best_box = None
+    if len(outputs) == 1:
+        # Bbox detection model: [1, 5, numDets]
+        pred = outputs[0][0]
+    else:
+        # Segmentation model: [1, 37, numDets] — use bbox columns only
+        pred = outputs[0][0]
 
-    for i in range(num_dets):
-        conf = data[4, i]
-        if conf < CONF_THRESHOLD:
-            continue
-        cx, cy, w, h = data[0, i], data[1, i], data[2, i], data[3, i]
-        x1 = (cx - w / 2) * scale_x
-        y1 = (cy - h / 2) * scale_y
-        x2 = (cx + w / 2) * scale_x
-        y2 = (cy + h / 2) * scale_y
-        if conf > best_conf:
-            best_conf = conf
-            best_box = [x1, y1, x2, y2]
+    confs = pred[4, :]
+    best_idx = int(confs.argmax())
+    conf = float(confs[best_idx])
+    if conf < CONF_THRESHOLD:
+        return None, 0.0
 
-    return best_box, float(best_conf)
+    cx, cy, w, h = pred[0, best_idx], pred[1, best_idx], pred[2, best_idx], pred[3, best_idx]
+    x1 = (cx - w / 2) * scale_x
+    y1 = (cy - h / 2) * scale_y
+    x2 = (cx + w / 2) * scale_x
+    y2 = (cy + h / 2) * scale_y
+    return [x1, y1, x2, y2], conf
 
 
 def main():

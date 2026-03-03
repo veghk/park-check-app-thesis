@@ -5,9 +5,9 @@ Runs test plate images through fast-plate-ocr (same pipeline as the backend Chec
 and reports exact match accuracy, character error rate, and a per-image table.
 
 Setup:
-  1. Add plate photos to  ai/test_plates/
-  2. Fill in ai/test_plates/ground_truth.json  (see format below)
-  3. Run:  cd backend && python ../ai/evaluate_ocr.py
+  1. Add plate photos to  backend/eval/test_plates/
+  2. Fill in backend/eval/test_plates/ground_truth.json  (see format below)
+  3. Run:  cd backend && python eval/evaluate_ocr.py
 
 ground_truth.json format:
 {
@@ -25,8 +25,10 @@ import numpy as np
 from fast_plate_ocr import ONNXPlateRecognizer
 from PIL import Image
 
-GROUND_TRUTH_PATH = os.path.join(os.path.dirname(__file__), "test_plates", "ground_truth.json")
-TEST_PLATES_DIR = os.path.join(os.path.dirname(__file__), "test_plates")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+GROUND_TRUTH_PATH = os.path.join(_HERE, "test_plates", "ground_truth.json")
+TEST_PLATES_DIR   = os.path.join(_HERE, "test_plates")
 
 
 def normalize_plate(text: str) -> str:
@@ -56,7 +58,7 @@ def cer(predicted: str, ground_truth: str) -> float:
 def main():
     if not os.path.exists(GROUND_TRUTH_PATH):
         print(f"ERROR: ground_truth.json not found at {GROUND_TRUTH_PATH}")
-        print("Add plate images to ai/test_plates/ and create ground_truth.json")
+        print("Add plate images to backend/eval/test_plates/ and create ground_truth.json")
         sys.exit(1)
 
     with open(GROUND_TRUTH_PATH) as f:

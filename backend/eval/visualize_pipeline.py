@@ -1,8 +1,9 @@
 """
-Picks the 15 best-detected test images and saves visualisations to test_plates_results/.
+Picks the 15 best-detected test images and saves visualisations to eval/test_plates_results/.
 
 Output folders:
   test/       original images
+  seg/        segmentation mask overlaid on the full image
   detection/  predicted polygon drawn on the full image
   warp/       perspective-corrected plate crop
   ocr/        warp with OCR result overlaid
@@ -11,10 +12,13 @@ Output folders:
 "Best" = highest IoU x confidence score across all test images.
 
 Run from project root:
-  docker-compose run --rm \
-    -v $(pwd)/ai:/ai \
-    -v $(pwd)/frontend/public/models:/frontend/public/models \
-    web python3 /ai/visualize_pipeline.py
+  docker-compose run --rm \\
+    -v $(pwd)/frontend/public/models:/frontend/public/models \\
+    web python3 /app/eval/visualize_pipeline.py
+
+Or locally:
+  pip install onnxruntime opencv-python easyocr Pillow numpy
+  python backend/eval/visualize_pipeline.py
 """
 
 import json
@@ -28,10 +32,13 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image, ImageDraw, ImageFont
 
-GROUND_TRUTH_PATH = "/ai/test_plates/ground_truth.json"
-TEST_PLATES_DIR   = "/ai/test_plates"
-OUT_ROOT          = "/ai/test_plates_results"
-MODEL_PATH        = "/frontend/public/models/plate-segmentor.onnx"
+_HERE         = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
+
+GROUND_TRUTH_PATH = os.path.join(_HERE, "test_plates", "ground_truth.json")
+TEST_PLATES_DIR   = os.path.join(_HERE, "test_plates")
+OUT_ROOT          = os.path.join(_HERE, "test_plates_results")
+MODEL_PATH        = os.path.join(_PROJECT_ROOT, "frontend", "public", "models", "plate-segmentor.onnx")
 
 CONF_THRESHOLD = 0.4
 IOU_THRESHOLD  = 0.5
@@ -229,7 +236,7 @@ def main():
 
     scored.sort(key=lambda x: x[0], reverse=True)
     selected = scored[:TOP_N]
-    print(f"Selected top {TOP_N} images (by IoU × confidence):\n")
+    print(f"Selected top {TOP_N} images (by IoU x confidence):\n")
 
     # Phase 2 — generate outputs
     ok = miss = 0

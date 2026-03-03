@@ -61,7 +61,7 @@ Thumbs.db
 *.weights
 runs/
 datasets/
-ai/test_plates_results/
+backend/eval/test_plates_results/
 
 # Coverage
 htmlcov/
