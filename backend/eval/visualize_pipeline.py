@@ -40,9 +40,10 @@ TEST_PLATES_DIR   = os.path.join(_HERE, "test_plates")
 OUT_ROOT          = os.path.join(_HERE, "test_plates_results")
 MODEL_PATH        = os.path.join(_PROJECT_ROOT, "frontend", "public", "models", "plate-segmentor.onnx")
 
-CONF_THRESHOLD = 0.4
-IOU_THRESHOLD  = 0.5
-INPUT_SIZE     = 416
+CONF_THRESHOLD  = 0.4
+IOU_THRESHOLD   = 0.5
+INPUT_SIZE      = 416
+MASK_DILATE_PX  = 10  # expand mask after upscale to recover pixels lost by proto downsampling
 TOP_N          = 15
 PLATE_W        = 520
 PLATE_H        = 110
@@ -97,24 +98,24 @@ def order_corners(pts):
 
 def detect_and_warp(session, img):
     """
-    Runs the model and returns (warped_plate, corners, confidence).
-    Returns (None, None, 0) if nothing was detected.
-    Currently uses the detection model - when switching to segmentation,
-    swap the block below marked DETECTION MODEL with SEGMENTATION MODEL.
+    Runs the model and returns (warped_plate, corners, confidence, mask_full).
+    mask_full is a uint8 numpy array (h x w, values 0/255) for seg models, None for bbox.
+    Returns (None, None, 0, None) if nothing was detected.
     """
     tensor, orig_w, orig_h = preprocess(img)
     outputs = session.run(None, {session.get_inputs()[0].name: tensor})
 
     num_outputs = len(outputs)
+    mask_full = None
 
     if num_outputs == 1:
-        # DETECTION MODEL (current): output [1, 5, 8400]
+        # DETECTION MODEL: output [1, 5, 8400]
         pred = outputs[0][0]   # [5, 8400]
         confs = pred[4, :]
         best_idx = int(confs.argmax())
         conf = float(confs[best_idx])
         if conf < CONF_THRESHOLD:
-            return None, None, 0.0
+            return None, None, 0.0, None
 
         cx, cy, w, h = pred[0, best_idx], pred[1, best_idx], pred[2, best_idx], pred[3, best_idx]
         sx, sy = orig_w / INPUT_SIZE, orig_h / INPUT_SIZE
@@ -132,7 +133,7 @@ def detect_and_warp(session, img):
         best_idx = int(confs.argmax())
         conf = float(confs[best_idx])
         if conf < CONF_THRESHOLD:
-            return None, None, 0.0
+            return None, None, 0.0, None
 
         cx, cy, w, h = pred[0, best_idx], pred[1, best_idx], pred[2, best_idx], pred[3, best_idx]
         bx1, by1 = cx - w/2, cy - h/2
@@ -150,16 +151,22 @@ def detect_and_warp(session, img):
         if mx2 > mx1 and my2 > my1:
             full_mask[my1:my2, mx1:mx2] = mask[my1:my2, mx1:mx2]
 
-        binary = (full_mask > 0.5).astype(np.uint8) * 255
-        sx, sy = orig_w / INPUT_SIZE, orig_h / INPUT_SIZE
-        binary_full = cv2.resize(binary, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        binary    = (full_mask > 0.5).astype(np.uint8) * 255
+        mask_full = cv2.resize(binary, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        if MASK_DILATE_PX > 0:
+            k         = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (MASK_DILATE_PX*2+1, MASK_DILATE_PX*2+1))
+            mask_full = cv2.dilate(mask_full, k)
 
-        cnts, _ = cv2.findContours(binary_full, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts, _ = cv2.findContours(mask_full, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if cnts:
-            cnt     = max(cnts, key=cv2.contourArea)
-            rect    = cv2.minAreaRect(cnt)
-            corners = cv2.boxPoints(rect).astype(np.float32)
+            cnt  = max(cnts, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(cnt)
+            corners = np.array([
+                [x,   y  ], [x+w, y  ],
+                [x+w, y+h], [x,   y+h],
+            ], dtype=np.float32)
         else:
+            sx, sy  = orig_w / INPUT_SIZE, orig_h / INPUT_SIZE
             corners = np.array([
                 [bx1*sx, by1*sy], [bx2*sx, by1*sy],
                 [bx2*sx, by2*sy], [bx1*sx, by2*sy],
@@ -173,7 +180,7 @@ def detect_and_warp(session, img):
     M      = cv2.getPerspectiveTransform(corners, dst)
     warped = cv2.warpPerspective(np.array(img), M, (PLATE_W, PLATE_H))
 
-    return Image.fromarray(warped), corners, conf
+    return Image.fromarray(warped), corners, conf, mask_full
 
 
 def run_ocr(reader, warp_img):
@@ -199,8 +206,19 @@ def draw_polygon(draw, corners, color, width=4):
         draw.line([pts[i], pts[(i+1) % len(pts)]], fill=color, width=width)
 
 
+def draw_mask_overlay(img, mask_full, corners, color):
+    """Returns a copy of img with a semi-transparent mask overlay and polygon outline."""
+    base = img.copy().convert("RGBA")
+    ov   = np.zeros((img.height, img.width, 4), dtype=np.uint8)
+    ov[mask_full > 128, :] = [color[0], color[1], color[2], 140]
+    seg_img  = Image.alpha_composite(base, Image.fromarray(ov, "RGBA")).convert("RGB")
+    seg_draw = ImageDraw.Draw(seg_img)
+    draw_polygon(seg_draw, corners, color, width=3)
+    return seg_img
+
+
 def main():
-    dirs = {k: os.path.join(OUT_ROOT, k) for k in ("test", "detection", "warp", "ocr", "pipeline")}
+    dirs = {k: os.path.join(OUT_ROOT, k) for k in ("test", "seg", "detection", "warp", "ocr", "pipeline")}
     for d in dirs.values():
         os.makedirs(d, exist_ok=True)
 
@@ -226,7 +244,7 @@ def main():
             continue
         gt_box = entry["box"]
         img    = Image.open(path).convert("RGB")
-        warped, corners, det_conf = detect_and_warp(session, img)
+        warped, corners, det_conf, _ = detect_and_warp(session, img)
         if corners is None:
             scored.append((0.0, filename, entry, None, 0.0, 0.0))
             continue
@@ -253,10 +271,15 @@ def main():
             print(f"  {filename[:36]:36s}  NO DETECTION")
             continue
 
-        color     = OK_COLOR if box_iou >= IOU_THRESHOLD else MISS_COLOR
-        warped, _, _ = detect_and_warp(session, img)  # re-run for fresh warp image
+        color              = OK_COLOR if box_iou >= IOU_THRESHOLD else MISS_COLOR
+        warped, _, _, mask = detect_and_warp(session, img)  # re-run for warp + mask
 
-        # 2. detection/ — polygon on full image
+        # 2. seg/ — mask overlay on full image
+        if mask is not None:
+            seg_img = draw_mask_overlay(img, mask, corners, color)
+            seg_img.save(os.path.join(dirs["seg"], filename), quality=92)
+
+        # 4. detection/ — polygon on full image
         det_img  = img.copy()
         det_draw = ImageDraw.Draw(det_img)
         draw_polygon(det_draw, corners, color)
@@ -264,10 +287,10 @@ def main():
                    f"{det_conf:.0%}", color, font, above=True)
         det_img.save(os.path.join(dirs["detection"], filename), quality=92)
 
-        # 3. warp/ — flat perspective-corrected plate
+        # 5. warp/ — flat perspective-corrected plate
         warped.save(os.path.join(dirs["warp"], filename), quality=92)
 
-        # 4. ocr/ — warp with OCR text overlaid
+        # 6. ocr/ — warp with OCR text overlaid
         ocr_text, ocr_conf = run_ocr(reader, warped)
         ocr_img  = warped.copy()
         ocr_draw = ImageDraw.Draw(ocr_img)
@@ -276,7 +299,7 @@ def main():
                    OK_COLOR if ocr_text else MISS_COLOR, font, above=True)
         ocr_img.save(os.path.join(dirs["ocr"], filename), quality=92)
 
-        # 5. pipeline/ — full image with GT box + polygon + OCR label
+        # 7. pipeline/ — full image with GT box + polygon + OCR label
         pip_img  = img.copy()
         pip_draw = ImageDraw.Draw(pip_img)
         gx1, gy1, gx2, gy2 = [int(v) for v in gt_box]
@@ -298,7 +321,7 @@ def main():
     total = ok + miss
     print(f"\nSaved to {OUT_ROOT}/")
     print(f"Detection (top {TOP_N}): {ok}/{total} = {ok/total*100:.1f}%")
-    print(f"Folders: test  detection  warp  ocr  pipeline")
+    print(f"Folders: test  seg  detection  warp  ocr  pipeline")
     print(f"Legend:  GREEN=ground truth  BLUE=correct  RED=wrong/missed")
 
 

@@ -1,15 +1,10 @@
 import * as ort from "onnxruntime-web";
 import { getModel } from "./modelRegistry";
-import { DETECTION_THRESHOLD } from "../config";
-
-// Model was trained at 416x416 (must be a multiple of 32 for YOLO stride)
-const INPUT_SIZE = 416;
-
-const MASK_THRESHOLD = 0.5;
-
-// Plate output canvas size for perspective warp (European plate aspect ~4:1)
-const PLATE_W = 280;
-const PLATE_H = 70;
+import { DETECTION_THRESHOLD, NMS_IOU_THRESHOLD } from "../config";
+import {
+  INPUT_SIZE, PLATE_W, PLATE_H,
+  getPerspectiveTransform, extractAllDetections,
+} from "./detectorCore.js";
 
 function preprocess(canvas) {
   const tmp = document.createElement("canvas");
@@ -26,108 +21,6 @@ function preprocess(canvas) {
     tensor[2 * plane+i] = data[i * 4 + 2] / 255;
   }
   return tensor;
-}
-
-function sigmoid(x) {
-  return 1 / (1 + Math.exp(-x));
-}
-
-// Morphological dilation: any pixel within r of a set pixel becomes set.
-function dilate(mask, w, h, r) {
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let found = false;
-      for (let dy = -r; dy <= r && !found; dy++) {
-        for (let dx = -r; dx <= r && !found; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx >= 0 && nx < w && ny >= 0 && ny < h && mask[ny * w + nx]) found = true;
-        }
-      }
-      out[y * w + x] = found ? 1 : 0;
-    }
-  }
-  return out;
-}
-
-// Morphological erosion: a pixel stays set only if all pixels within r are also set.
-function erode(mask, w, h, r) {
-  const out = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let all = true;
-      for (let dy = -r; dy <= r && all; dy++) {
-        for (let dx = -r; dx <= r && all; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || nx >= w || ny < 0 || ny >= h || !mask[ny * w + nx]) all = false;
-        }
-      }
-      out[y * w + x] = all ? 1 : 0;
-    }
-  }
-  return out;
-}
-
-// Morphological closing (dilate then erode): fills holes and joins broken regions.
-// Ngo et al. (Applied Sciences, 2023) use this step to clean thresholded plate masks.
-function morphClose(mask, w, h, r = 2) {
-  return erode(dilate(mask, w, h, r), w, h, r);
-}
-
-// Find 4 extreme corners of a binary mask using the diagonal sum/difference trick:
-//   TL = pixel with min(x+y), TR = max(x-y), BR = max(x+y), BL = min(x-y)
-// This handles rotated plates without needing a full contour algorithm.
-function maskCorners(mask, w, h, scaleX, scaleY) {
-  let tlMin = Infinity, trMax = -Infinity, brMax = -Infinity, blMin = Infinity;
-  let tl = null, tr = null, br = null, bl = null;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!mask[y * w + x]) continue;
-      const s = x + y, d = x - y;
-      if (s < tlMin) { tlMin = s; tl = [x, y]; }
-      if (d > trMax) { trMax = d; tr = [x, y]; }
-      if (s > brMax) { brMax = s; br = [x, y]; }
-      if (d < blMin) { blMin = d; bl = [x, y]; }
-    }
-  }
-  if (!tl) return null;
-  return [tl, tr, br, bl].map(([x, y]) => [x * scaleX, y * scaleY]);
-}
-
-// Solves Ax=b via Gaussian elimination with partial pivoting.
-function solveLinear(A, b) {
-  const n = b.length;
-  const M = A.map((row, i) => [...row, b[i]]);
-  for (let col = 0; col < n; col++) {
-    let maxRow = col;
-    for (let row = col + 1; row < n; row++) {
-      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
-    }
-    [M[col], M[maxRow]] = [M[maxRow], M[col]];
-    const pivot = M[col][col];
-    if (Math.abs(pivot) < 1e-10) return null;
-    for (let row = 0; row < n; row++) {
-      if (row === col) continue;
-      const f = M[row][col] / pivot;
-      for (let j = col; j <= n; j++) M[row][j] -= f * M[col][j];
-    }
-  }
-  return M.map((row, i) => row[n] / row[i]);
-}
-
-// Computes the 3x3 perspective transform H mapping src[i] to dst[i].
-// Uses the Direct Linear Transform (DLT) formulation: 8 equations, 8 unknowns.
-// Returns H as a flat 9-element array (row-major), with H[8]=1 (normalised).
-function getPerspectiveTransform(src, dst) {
-  const A = [], b = [];
-  for (let i = 0; i < 4; i++) {
-    const [sx, sy] = src[i], [dx, dy] = dst[i];
-    A.push([sx, sy, 1,  0,  0, 0, -sx*dx, -sy*dx]);
-    A.push([ 0,  0, 0, sx, sy, 1, -sx*dy, -sy*dy]);
-    b.push(dx, dy);
-  }
-  const h = solveLinear(A, b);
-  return h ? [...h, 1] : null;
 }
 
 // Applies the perspective warp H to srcCanvas and writes a PLATE_W x PLATE_H canvas.
@@ -183,67 +76,17 @@ export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
   const outputs = await model.run({ [model.inputNames[0]]: inputTensor });
 
   // YOLOv8-seg: two outputs
-  const output0 = outputs[model.outputNames[0]]; // [1, 37, numDets]  — 4 bbox + 1 conf + 32 mask coeffs
-  const output1 = outputs[model.outputNames[1]]; // [1, 32, protoH, protoW] — mask prototypes
+  const output0 = outputs[model.outputNames[0]]; // [1, 37, numDets]
+  const output1 = outputs[model.outputNames[1]]; // [1, 32, protoH, protoW]
 
-  const numDets  = output0.dims[2];
-  const protoH   = output1.dims[2];
-  const protoW   = output1.dims[3];
-  const pred     = output0.data;
-  const proto    = output1.data;
-  const protoPixels = protoH * protoW;
-
-  // Best detection by confidence (row 4)
-  let bestConf = -1, bestIdx = -1;
-  for (let i = 0; i < numDets; i++) {
-    const conf = pred[4 * numDets + i];
-    if (conf > bestConf) { bestConf = conf; bestIdx = i; }
-  }
-  if (bestConf < threshold) return [];
-
-  // Bbox in model input space (416x416)
-  const cx = pred[0 * numDets + bestIdx];
-  const cy = pred[1 * numDets + bestIdx];
-  const bw = pred[2 * numDets + bestIdx];
-  const bh = pred[3 * numDets + bestIdx];
-  const bx1 = cx - bw / 2, by1 = cy - bh / 2;
-  const bx2 = cx + bw / 2, by2 = cy + bh / 2;
-
-  // Scale bbox to original canvas coordinates
-  const sx = canvas.width  / INPUT_SIZE;
-  const sy = canvas.height / INPUT_SIZE;
-
-  // Reconstruct segmentation mask: dot(coeffs, prototypes), sigmoid, threshold.
-  // Only compute pixels inside the predicted bbox to save time.
-  const pxScale = protoW / INPUT_SIZE;
-  const pyScale = protoH / INPUT_SIZE;
-  const px1 = Math.max(0, Math.floor(bx1 * pxScale));
-  const py1 = Math.max(0, Math.floor(by1 * pyScale));
-  const px2 = Math.min(protoW - 1, Math.ceil(bx2 * pxScale));
-  const py2 = Math.min(protoH - 1, Math.ceil(by2 * pyScale));
-
-  const binary = new Uint8Array(protoPixels);
-  for (let py = py1; py <= py2; py++) {
-    for (let px = px1; px <= px2; px++) {
-      let sum = 0;
-      for (let k = 0; k < 32; k++) {
-        sum += pred[(5 + k) * numDets + bestIdx] * proto[k * protoPixels + py * protoW + px];
-      }
-      binary[py * protoW + px] = sigmoid(sum) > MASK_THRESHOLD ? 1 : 0;
-    }
-  }
-
-  // Morphological closing: fills gaps caused by reflections or dirt on the plate.
-  const closed = morphClose(binary, protoW, protoH, 2);
-
-  // Find 4 corners from the mask, scaled to canvas coordinates.
-  const corners = maskCorners(
-    closed, protoW, protoH,
-    canvas.width  / protoW,
-    canvas.height / protoH,
+  const detections = extractAllDetections(
+    output0.data, output1.data,
+    output0.dims[2], output1.dims[2], output1.dims[3],
+    canvas.width, canvas.height,
+    threshold, NMS_IOU_THRESHOLD,
   );
 
-  return [{ x1: bx1*sx, y1: by1*sy, x2: bx2*sx, y2: by2*sy, confidence: bestConf, corners }];
+  return detections.map(({ bbox, confidence, corners }) => ({ ...bbox, confidence, corners }));
 }
 
 // Perspective-corrects a plate region using the 4 corners found by runDetection.

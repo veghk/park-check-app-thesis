@@ -1,5 +1,5 @@
-// Run detection every N frames
-export const FRAME_SKIP = 6;
+// Run detection every N frames (loop already self-throttles by inference speed via await)
+export const FRAME_SKIP = 2;
 
 // How long to show the result before going back to scanning (ms)
 export const RESULT_DISPLAY_MS = 3000;

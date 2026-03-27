@@ -13,7 +13,7 @@ _EVAL_DIR        = os.path.join(os.path.dirname(__file__), "..", "eval")
 _TEST_PLATES_DIR = os.path.join(_EVAL_DIR, "test_plates")
 _RESULTS_ROOT    = os.path.join(_EVAL_DIR, "test_plates_results")
 _GROUND_TRUTH    = os.path.join(_TEST_PLATES_DIR, "ground_truth.json")
-_RESULT_FOLDERS  = ["warp", "ocr", "detection", "pipeline"]
+_RESULT_FOLDERS  = ["seg", "warp", "ocr", "detection", "pipeline"]
 
 
 @admin.register(User)
