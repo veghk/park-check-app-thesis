@@ -9,10 +9,10 @@ export const CAMERA_WIDTH  = 1280;
 export const CAMERA_HEIGHT = 720;
 
 // How long plate should stay in place for detection (ms)
-export const STABILIZER_DELAY_MS  = 1000;
+export const STABILIZER_DELAY_MS  = 600;
 
-// How many pixels the box can drift and still count as "stable"
-export const STABILIZER_TOLERANCE = 10;
+// How many pixels the detection center can drift and still count as "stable"
+export const STABILIZER_TOLERANCE = 60;
 
 // Detections below this confidence are thrown away
 export const DETECTION_THRESHOLD = 0.4;
