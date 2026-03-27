@@ -1,5 +1,5 @@
 import * as ort from "onnxruntime-web";
-import { getModel } from "./modelRegistry";
+import { getModel, runInference } from "./modelRegistry";
 
 // european-plates-mobile-vit-v2 model specs:
 //   Input:  [1, 70, 140, 1]  NHWC grayscale uint8
@@ -43,22 +43,38 @@ function decode(flat) {
 }
 
 export async function runOCR(cropCanvas) {
+  return _runOCR(cropCanvas);
+}
+
+async function _runOCR(cropCanvas) {
   let model;
   try {
     model = await getModel("plateOCR");
-    console.log("[OCR] model loaded");
   } catch (e) {
     console.error("[OCR] model load failed:", e);
     return "";
   }
 
   try {
+    const t0 = performance.now();
     const pixels = preprocess(cropCanvas);
+    const tPreprocess = performance.now();
+
     const inputTensor = new ort.Tensor("uint8", pixels, [1, INPUT_H, INPUT_W, 1]);
-    const output = await model.run({ [model.inputNames[0]]: inputTensor });
+    const output = await runInference(model, { [model.inputNames[0]]: inputTensor });
+    const tInference = performance.now();
+
     const out  = output[model.outputNames[0]];
     const text = decode(out.data);
-    console.log("[OCR] result:", JSON.stringify(text));
+    const tDecode = performance.now();
+
+    console.log(
+      `[OCR] preprocess=${(tPreprocess-t0).toFixed(0)}ms` +
+      ` inference=${(tInference-tPreprocess).toFixed(0)}ms` +
+      ` decode=${(tDecode-tInference).toFixed(0)}ms` +
+      ` total=${(tDecode-t0).toFixed(0)}ms` +
+      ` result=${JSON.stringify(text)}`
+    );
     return text;
   } catch (e) {
     console.error("[OCR] inference failed:", e);

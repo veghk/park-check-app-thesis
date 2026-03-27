@@ -36,14 +36,11 @@ export class Stabilizer {
       // Same detection — keep corners fresh but don't reset the timer
       this._latestBox = box;
       const elapsed = Date.now() - this._stableSince;
-      console.log(`[Stabilizer] stable ${elapsed}ms / ${this.delayMs}ms, center=(${cx.toFixed(0)},${cy.toFixed(0)})`);
       if (!this._fired && elapsed >= this.delayMs) {
-        console.log("[Stabilizer] FIRING OCR");
         this._fired = true;
         this.onStable(this._latestBox);
       }
     } else {
-      console.log(`[Stabilizer] new anchor (${cx.toFixed(0)},${cy.toFixed(0)})`);
       // New detection — anchor to this center and restart timer
       this._anchorCx = cx;
       this._anchorCy = cy;

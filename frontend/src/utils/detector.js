@@ -1,5 +1,5 @@
 import * as ort from "onnxruntime-web";
-import { getModel } from "./modelRegistry";
+import { getModel, runInference } from "./modelRegistry";
 import { DETECTION_THRESHOLD, NMS_IOU_THRESHOLD } from "../config";
 import {
   INPUT_SIZE, PLATE_W, PLATE_H,
@@ -68,12 +68,20 @@ function warpPerspective(srcCanvas, H) {
   return out;
 }
 
-export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
+export function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
+  return _runDetection(canvas, threshold);
+}
+
+async function _runDetection(canvas, threshold) {
   const model = await getModel("plateDetector");
 
+  const t0 = performance.now();
   const tensor = preprocess(canvas);
+  const tPreprocess = performance.now();
+
   const inputTensor = new ort.Tensor("float32", tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
-  const outputs = await model.run({ [model.inputNames[0]]: inputTensor });
+  const outputs = await runInference(model, { [model.inputNames[0]]: inputTensor });
+  const tInference = performance.now();
 
   // YOLOv8-seg: two outputs
   const output0 = outputs[model.outputNames[0]]; // [1, 37, numDets]
@@ -84,6 +92,15 @@ export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
     output0.dims[2], output1.dims[2], output1.dims[3],
     canvas.width, canvas.height,
     threshold, NMS_IOU_THRESHOLD,
+  );
+  const tPost = performance.now();
+
+  console.log(
+    `[Detection] preprocess=${(tPreprocess-t0).toFixed(0)}ms` +
+    ` inference=${(tInference-tPreprocess).toFixed(0)}ms` +
+    ` postprocess=${(tPost-tInference).toFixed(0)}ms` +
+    ` total=${(tPost-t0).toFixed(0)}ms` +
+    ` dets=${detections.length}`
   );
 
   return detections.map(({ bbox, confidence, corners }) => ({ ...bbox, confidence, corners }));
