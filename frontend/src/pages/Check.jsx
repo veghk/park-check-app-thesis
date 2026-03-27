@@ -56,7 +56,6 @@ function drawTracks(canvas, video, tracks) {
     ctx.strokeStyle = color;
     ctx.lineWidth   = 3;
 
-    // Draw polygon or rect
     if (box.corners) {
       ctx.beginPath();
       ctx.moveTo(box.corners[0][0], box.corners[0][1]);
@@ -67,7 +66,6 @@ function drawTracks(canvas, video, tracks) {
       ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
     }
 
-    // Draw result label below the box
     if (result) {
       const label =
         result.offline    ? `${result.plate_text} · saved offline` :
@@ -120,7 +118,7 @@ export default function Check() {
 
   // Called by the tracker when a plate has been stable long enough.
   // Runs OCR + backend check and writes the result back onto the track object
-  // so the next draw call picks it up — camera keeps running the whole time.
+  // so the next draw call picks it up. The camera keeps running the whole time.
   const checkPlate = useCallback(async (track) => {
     const video = videoRef.current;
     if (!video) return;
@@ -289,9 +287,9 @@ export default function Check() {
 
         {isScanning && (
           <div className="absolute bottom-24 left-0 right-0 flex flex-col items-center gap-2 pointer-events-none">
-            {modelFailed  && <span className="bg-black/50 text-white/60 text-xs px-3 py-1 rounded-full">Detection unavailable — no model loaded</span>}
+            {modelFailed  && <span className="bg-black/50 text-white/60 text-xs px-3 py-1 rounded-full">Detection unavailable, no model loaded</span>}
             {modelReady   && <span className="bg-black/50 text-white text-xs px-3 py-1 rounded-full">Point camera at a licence plate</span>}
-            {!modelReady && !modelFailed && <span className="bg-black/50 text-white text-xs px-3 py-1 rounded-full">Camera ready — loading detection…</span>}
+            {!modelReady && !modelFailed && <span className="bg-black/50 text-white text-xs px-3 py-1 rounded-full">Camera ready, loading detection...</span>}
           </div>
         )}
 

@@ -3,7 +3,7 @@ from django.contrib.auth.models import AbstractUser
 
 
 class User(AbstractUser):
-    """Extended user — parking enforcement officer."""
+    """Extended user model for parking enforcement officers."""
     badge_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
 
     def __str__(self):
@@ -24,7 +24,7 @@ class Plate(models.Model):
 
 
 class TestResult(models.Model):
-    """Proxy model — no DB table. Used only to register the test viewer in Django admin."""
+    """Proxy model with no DB table. Only exists to register the test viewer in Django admin."""
     class Meta:
         managed = False
         verbose_name = "Test Result"

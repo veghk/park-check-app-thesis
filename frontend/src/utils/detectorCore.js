@@ -60,8 +60,7 @@ export function morphClose(mask, w, h, r = 2) {
 }
 
 // Returns the axis-aligned bounding box of a binary mask as 4 corners [TL, TR, BR, BL].
-// Simpler and more stable than rotated-corner extraction — the mask is already a
-// tight fit to the plate, so min/max extents give a reliable rectangular crop.
+// Using min/max extents is simpler and stable enough since the mask is already a tight fit.
 export function maskBbox(mask, w, h, scaleX, scaleY) {
   let minX = w, minY = h, maxX = 0, maxY = 0;
   for (let y = 0; y < h; y++) {
@@ -175,7 +174,6 @@ function reconstructCorners(pred, proto, idx, numDets, protoH, protoW, origW, or
  *   bbox:    { x1, y1, x2, y2 } in origW×origH pixel space
  */
 export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW, origH, threshold = 0.4, nmsThreshold = 0.45) {
-  // Collect all above-threshold detections
   const candidates = [];
   for (let i = 0; i < numDets; i++) {
     const conf = pred[4 * numDets + i];
@@ -215,7 +213,7 @@ export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW
   }));
 }
 
-/** Convenience wrapper — returns the single best detection or null. */
+// Returns the single best detection, or null if nothing passes the threshold.
 export function extractDetection(pred, proto, numDets, protoH, protoW, origW, origH, threshold = 0.4) {
   return extractAllDetections(pred, proto, numDets, protoH, protoW, origW, origH, threshold)[0] ?? null;
 }

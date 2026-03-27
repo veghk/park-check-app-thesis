@@ -2,7 +2,6 @@ import { STABILIZER_DELAY_MS, STABILIZER_TOLERANCE } from "../config";
 
 let _nextId = 1;
 
-// A single tracked plate.
 class Track {
   constructor(box) {
     this.id          = _nextId++;
@@ -34,8 +33,8 @@ class Track {
   }
 }
 
-// Tracks multiple plates across frames.
-// onStable receives the full track object so the caller can write result back onto it.
+// Tracks multiple plates across frames. The caller writes OCR results back onto
+// the track object directly, which the draw loop picks up on the next frame.
 export class Tracker {
   constructor(onStable, delayMs = STABILIZER_DELAY_MS, tolerance = STABILIZER_TOLERANCE) {
     this.onStable  = onStable;
@@ -86,7 +85,6 @@ export class Tracker {
     }
   }
 
-  // Returns { box, result } per active track for drawing.
   activeBoxes() {
     return this._tracks.map(t => ({ box: t.latestBox, result: t.result }));
   }
