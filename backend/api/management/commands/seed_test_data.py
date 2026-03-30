@@ -17,6 +17,7 @@ class Command(BaseCommand):
 
         admin_user, created = User.objects.get_or_create(username="testcompany")
         admin_user.set_password("testcompany")
+        admin_user.is_staff = False
         admin_user.save()
         CompanyAdmin.objects.get_or_create(user=admin_user, defaults={"company": company})
         self.stdout.write(f"  {'Created' if created else 'Updated'} company admin: testcompany / testcompany")

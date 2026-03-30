@@ -48,6 +48,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        globIgnores: ["**/ort/**"],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https?:\/\/.*\/api\/.*/,
@@ -61,6 +63,16 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://web:8000",
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    host: true,
+    port: 4173,
     proxy: {
       "/api": {
         target: "http://web:8000",

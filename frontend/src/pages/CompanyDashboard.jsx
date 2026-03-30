@@ -9,7 +9,8 @@ export default function CompanyDashboard() {
 
   const [enforcers,    setEnforcers]    = useState([]);
   const [loading,      setLoading]      = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState(null); // id to confirm
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [showForm,     setShowForm]     = useState(false);
   const [form,         setForm]         = useState({ username: "", badge_number: "", password: "" });
   const [formError,    setFormError]    = useState("");
   const [formLoading,  setFormLoading]  = useState(false);
@@ -41,6 +42,7 @@ export default function CompanyDashboard() {
       const { data } = await client.post("/api/enforcers/", form);
       setEnforcers((prev) => [...prev, data]);
       setForm({ username: "", badge_number: "", password: "" });
+      setShowForm(false);
     } catch (err) {
       const msg = err.response?.data;
       setFormError(
@@ -153,40 +155,51 @@ export default function CompanyDashboard() {
           </div>
         </div>
 
-        {/* Add Enforcer form */}
-        <div className="border border-gray-200 rounded-2xl p-5">
-          <p className="font-semibold text-gray-900 text-sm mb-4">Add Enforcer</p>
-          <form onSubmit={handleCreate} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Username"
-              required
-              value={form.username}
-              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <input
-              type="text"
-              placeholder="Badge number (optional)"
-              value={form.badge_number}
-              onChange={(e) => setForm((f) => ({ ...f, badge_number: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              required
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            {formError && <p className="text-xs text-red-500">{formError}</p>}
-            <button type="submit" disabled={formLoading}
-              className="w-full py-3 bg-primary text-white text-sm font-semibold rounded-xl disabled:opacity-50">
-              {formLoading ? "Creating…" : "Create Enforcer"}
-            </button>
-          </form>
-        </div>
+        {/* Add Enforcer */}
+        {showForm ? (
+          <div className="border border-gray-200 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-semibold text-gray-900 text-sm">Add Enforcer</p>
+              <button onClick={() => { setShowForm(false); setFormError(""); }}
+                className="text-gray-400 text-xs">Cancel</button>
+            </div>
+            <form onSubmit={handleCreate} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Username"
+                required
+                value={form.username}
+                onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="text"
+                placeholder="Badge number (optional)"
+                value={form.badge_number}
+                onChange={(e) => setForm((f) => ({ ...f, badge_number: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="password"
+                placeholder="Password"
+                required
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              {formError && <p className="text-xs text-red-500">{formError}</p>}
+              <button type="submit" disabled={formLoading}
+                className="w-full py-3 bg-primary text-white text-sm font-semibold rounded-xl disabled:opacity-50">
+                {formLoading ? "Creating…" : "Create Enforcer"}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <button onClick={() => setShowForm(true)}
+            className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 font-medium">
+            + Add Enforcer
+          </button>
+        )}
 
       </div>
     </div>
