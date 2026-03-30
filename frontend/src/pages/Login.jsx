@@ -15,8 +15,8 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
-      navigate("/setup");
+      const redirect = await login(username, password);
+      navigate(redirect);
     } catch {
       setError("Invalid username or password.");
     } finally {

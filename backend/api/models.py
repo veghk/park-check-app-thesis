@@ -15,14 +15,27 @@ class Company(models.Model):
 
 
 class User(AbstractUser):
-    """Extended user model for parking enforcement officers."""
-    badge_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
-    company = models.ForeignKey(
-        Company, on_delete=models.SET_NULL, null=True, blank=True, related_name="enforcers"
-    )
-
     def __str__(self):
         return self.username
+
+
+class CompanyAdmin(models.Model):
+    """A company administrator who manages enforcers and devices."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="company_admin_profile")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="admins")
+
+    def __str__(self):
+        return f"{self.user.username} (admin of {self.company})"
+
+
+class Enforcer(models.Model):
+    """A parking enforcement officer employed by a company."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="enforcer_profile")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="enforcers")
+    badge_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.user.username} (enforcer, {self.company})"
 
 
 class Plate(models.Model):

@@ -10,13 +10,18 @@ export function AuthProvider({ children }) {
     return u ? JSON.parse(u) : null;
   });
 
+  // Returns the route to redirect to after login based on role
   async function login(username, password) {
     const { data } = await client.post("/api/auth/token/", { username, password });
     localStorage.setItem("access_token", data.access);
     localStorage.setItem("refresh_token", data.refresh);
-    localStorage.setItem("user", JSON.stringify({ username }));
     setToken(data.access);
-    setUser({ username });
+
+    const { data: me } = await client.get("/api/users/me/");
+    localStorage.setItem("user", JSON.stringify(me));
+    setUser(me);
+
+    return me.role === "company_admin" ? "/company" : "/setup";
   }
 
   function logout() {

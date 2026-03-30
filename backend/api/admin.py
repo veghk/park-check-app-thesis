@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import render
 from django.urls import path
 
-from .models import User, Plate, TestResult, Company, CheckLog, Violation
+from .models import User, Plate, TestResult, Company, CheckLog, Violation, CompanyAdmin, Enforcer
 
 _EVAL_DIR        = os.path.join(os.path.dirname(__file__), "..", "eval")
 _TEST_PLATES_DIR = os.path.join(_EVAL_DIR, "test_plates")
@@ -17,18 +17,28 @@ _RESULT_FOLDERS  = ["seg", "warp", "ocr", "detection", "pipeline"]
 
 
 @admin.register(Company)
-class CompanyAdmin(admin.ModelAdmin):
+class CompanyModelAdmin(admin.ModelAdmin):
     list_display = ["name", "created_at"]
     search_fields = ["name"]
 
 
+@admin.register(CompanyAdmin)
+class CompanyAdminAdmin(admin.ModelAdmin):
+    list_display = ["user", "company"]
+    list_filter = ["company"]
+    search_fields = ["user__username"]
+
+
+@admin.register(Enforcer)
+class EnforcerAdmin(admin.ModelAdmin):
+    list_display = ["user", "badge_number", "company"]
+    list_filter = ["company"]
+    search_fields = ["user__username", "badge_number"]
+
+
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    fieldsets = UserAdmin.fieldsets + (
-        ("Park Check", {"fields": ("badge_number", "company")}),
-    )
-    list_display = ["username", "badge_number", "company", "is_staff"]
-    list_filter = ["company", "is_staff"]
+    list_display = ["username", "email", "is_staff", "is_superuser"]
 
 
 @admin.register(CheckLog)

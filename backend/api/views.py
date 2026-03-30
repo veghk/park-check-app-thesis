@@ -3,22 +3,82 @@ from rest_framework.response import Response
 
 from django.contrib.auth import get_user_model
 
-from .models import Plate, CheckLog, Violation
-from .serializers import UserSerializer, PlateSerializer, CheckLogSerializer, ViolationSerializer
+from .models import Plate, CheckLog, Violation, Enforcer
+from .serializers import (
+    PlateSerializer, CheckLogSerializer,
+    ViolationSerializer, EnforcerSerializer, EnforcerCreateSerializer,
+)
 
 User = get_user_model()
 
 
-class UserViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]
+class IsCompanyAdmin(permissions.BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and hasattr(request.user, "company_admin_profile")
+        )
+
+
+class MeView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        data = {"id": user.pk, "username": user.username}
+
+        if hasattr(user, "company_admin_profile"):
+            profile = user.company_admin_profile
+            data.update({
+                "role": "company_admin",
+                "company": profile.company_id,
+                "company_name": profile.company.name,
+                "badge_number": None,
+            })
+        elif hasattr(user, "enforcer_profile"):
+            profile = user.enforcer_profile
+            data.update({
+                "role": "enforcer",
+                "company": profile.company_id,
+                "company_name": profile.company.name,
+                "badge_number": profile.badge_number,
+            })
+        else:
+            data.update({
+                "role": "developer",
+                "company": None,
+                "company_name": None,
+                "badge_number": None,
+            })
+
+        return Response(data)
 
 
 class PlateViewSet(viewsets.ModelViewSet):
     queryset = Plate.objects.all().order_by("-created_at")
     serializer_class = PlateSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+
+class EnforcerViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsCompanyAdmin]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        company = self.request.user.company_admin_profile.company
+        return Enforcer.objects.filter(company=company).select_related("user")
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return EnforcerCreateSerializer
+        return EnforcerSerializer
+
+    def perform_create(self, serializer):
+        company = self.request.user.company_admin_profile.company
+        serializer.save(company=company)
+
+    def perform_destroy(self, instance):
+        instance.user.delete()
 
 
 class CheckView(views.APIView):

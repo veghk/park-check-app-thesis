@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Company, Plate, CheckLog, Violation
+from .models import Company, Plate, CheckLog, Violation, Enforcer
 
 User = get_user_model()
 
@@ -14,12 +14,38 @@ class CompanySerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
 
-class UserSerializer(serializers.ModelSerializer):
-    company_name = serializers.CharField(source="company.name", read_only=True)
+class EnforcerSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="user.id")
+    username = serializers.CharField(source="user.username")
 
     class Meta:
-        model = User
-        fields = ["id", "username", "email", "badge_number", "company", "company_name"]
+        model = Enforcer
+        fields = ["id", "username", "badge_number"]
+
+
+class EnforcerCreateSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    badge_number = serializers.CharField(required=False, allow_blank=True, default="")
+    password = serializers.CharField(write_only=True)
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already taken.")
+        return value
+
+    def create(self, validated_data):
+        company = validated_data["company"]
+        password = validated_data["password"]
+        badge = validated_data.get("badge_number") or None
+
+        user = User(username=validated_data["username"])
+        user.set_password(password)
+        user.save()
+
+        return Enforcer.objects.create(user=user, company=company, badge_number=badge)
+
+    def to_representation(self, instance):
+        return EnforcerSerializer(instance).data
 
 
 class PlateSerializer(serializers.ModelSerializer):
