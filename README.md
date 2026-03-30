@@ -1,7 +1,5 @@
 # Park Check — Licence Plate Enforcement App
 
-A Progressive Web App for parking enforcement officers. Point the phone camera at a vehicle; the app detects the licence plate in real time, reads the text on-device, and checks it against a registered-plates database — all without leaving the camera view. All inference runs in the browser (WebGPU → WebGL → WASM). The backend is only contacted for the final registration lookup.
-
 ---
 
 ## Dataflow
@@ -26,9 +24,9 @@ flowchart
     end
 
     subgraph BACKEND["Backend — Django REST API (port 8000)"]
-        CHECKVIEW["POST /api/check/\nCheckView"]
-        PLATEDB[("PostgreSQL\nPlate table")]
-        RESP["JSON response\n{ registered, owner_name }"]
+        CHECKVIEW["POST /api/check/\nCheckView + CheckLog created"]
+        PLATEDB[("PostgreSQL")]
+        RESP["JSON response\n{ registered, owner_name, check_log_id }"]
     end
 
     CAM --> FRAME
@@ -53,16 +51,56 @@ flowchart
 
 ---
 
-## Object Diagram
+## Enforcement Workflow
+
+```mermaid
+sequenceDiagram
+    actor Officer
+    participant App as React PWA
+    participant Backend as Django API
+    participant DB as PostgreSQL
+
+    Officer->>App: Open camera
+    App->>App: Request GPS
+    App->>App: Detect plate (ONNX/WebGPU)
+    App->>App: Track — stable ≥600 ms
+    App->>App: OCR plate text
+    App->>Backend: POST /api/check/ { plate_text, lat, lon }
+    Backend->>DB: Lookup Plate, create CheckLog
+    DB-->>Backend: registered / not registered
+    Backend-->>App: { registered, owner_name, check_log_id }
+
+    alt Registered
+        App->>Officer: Green box
+    else Not registered
+        App->>Officer: Red box + Issue Violation button
+        Officer->>App: Tap box or button
+        App->>Officer: Violation modal
+        Officer->>App: Confirm (+ optional note)
+        App->>Backend: POST /api/violations/ { check_log_id, notes }
+        Backend->>DB: Create Violation
+        App->>Officer: Confirmed
+    end
+```
+
+---
+
+## Data Model
 
 ```mermaid
 classDiagram
+    class Company {
+        +int id
+        +str name
+        +datetime created_at
+    }
+
     class User {
         +int id
         +str username
-        +str password
         +str badge_number
         +bool is_staff
+        +FK company
     }
 
     class Plate {
@@ -75,21 +113,42 @@ classDiagram
         +datetime updated_at
     }
 
-    class Track {
+    class CheckLog {
         +int id
-        +float anchorCx
-        +float anchorCy
-        +Box latestBox
-        +int stableSince
-        +int missCount
-        +bool fired
-        +object result
-        +distanceTo(box) float
-        +refresh(box) void
+        +str plate_text
+        +bool registered
+        +float latitude
+        +float longitude
+        +datetime checked_at
+        +FK officer
+        +FK plate
     }
 
+    class Violation {
+        +int id
+        +str plate_text
+        +float latitude
+        +float longitude
+        +str notes
+        +datetime issued_at
+        +FK check_log
+        +FK officer
+    }
+
+    Company "1" --> "0..*" User : owns
+    User "1" --> "0..*" CheckLog : performs
+    User "1" --> "0..*" Violation : issues
+    Plate "0..1" --> "0..*" CheckLog : matched in
+    CheckLog "1" --> "0..1" Violation : triggers
+```
+
+---
+
+## Frontend Object Model
+
+```mermaid
+classDiagram
     class Tracker {
-        +function onStable
         +int delayMs
         +int tolerance
         -Track[] _tracks
@@ -98,22 +157,35 @@ classDiagram
         +reset() void
     }
 
+    class Track {
+        +int id
+        +float anchorCx
+        +float anchorCy
+        +Box latestBox
+        +int stableSince
+        +int missCount
+        +bool fired
+        +CheckResult result
+        +distanceTo(box) float
+        +refresh(box) void
+    }
+
     class Box {
         +float x1
         +float y1
         +float x2
         +float y2
         +float conf
-        +float[] corners
+        +float[][] corners
     }
 
     class CheckResult {
         +str plate_text
         +bool registered
         +str owner_name
+        +int check_log_id
     }
 
-    User "1" --> "0..*" Plate : manages
     Tracker "1" --> "0..*" Track : owns
     Track "1" --> "1" Box : latestBox
     Track "1" --> "0..1" CheckResult : result

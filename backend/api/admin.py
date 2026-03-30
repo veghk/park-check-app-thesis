@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import render
 from django.urls import path
 
-from .models import User, Plate, TestResult
+from .models import User, Plate, TestResult, Company, CheckLog, Violation
 
 _EVAL_DIR        = os.path.join(os.path.dirname(__file__), "..", "eval")
 _TEST_PLATES_DIR = os.path.join(_EVAL_DIR, "test_plates")
@@ -16,11 +16,34 @@ _GROUND_TRUTH    = os.path.join(_TEST_PLATES_DIR, "ground_truth.json")
 _RESULT_FOLDERS  = ["seg", "warp", "ocr", "detection", "pipeline"]
 
 
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ["name", "created_at"]
+    search_fields = ["name"]
+
+
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
-        ("Park Check", {"fields": ("badge_number",)}),
+        ("Park Check", {"fields": ("badge_number", "company")}),
     )
+    list_display = ["username", "badge_number", "company", "is_staff"]
+    list_filter = ["company", "is_staff"]
+
+
+@admin.register(CheckLog)
+class CheckLogAdmin(admin.ModelAdmin):
+    list_display = ["plate_text", "registered", "officer", "checked_at", "latitude", "longitude"]
+    list_filter = ["registered"]
+    search_fields = ["plate_text", "officer__username"]
+    readonly_fields = ["officer", "plate_text", "plate", "registered", "latitude", "longitude", "checked_at"]
+
+
+@admin.register(Violation)
+class ViolationAdmin(admin.ModelAdmin):
+    list_display = ["plate_text", "officer", "issued_at"]
+    search_fields = ["plate_text", "officer__username"]
+    readonly_fields = ["check_log", "officer", "plate_text", "latitude", "longitude", "issued_at"]
 
 
 @admin.register(Plate)

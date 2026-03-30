@@ -5,6 +5,7 @@ import { runDetection, warpPlate } from "../utils/detector";
 import { getModel } from "../utils/modelRegistry";
 import { runOCR } from "../utils/ocr";
 import BottomNav from "../components/BottomNav";
+import ViolationModal from "../components/ViolationModal";
 import client from "../api/client";
 import {
   FRAME_SKIP,
@@ -32,9 +33,9 @@ function getPending() {
   catch { return []; }
 }
 
-function addPending(plateText) {
+function addPending(plateText, gps) {
   const q = getPending();
-  q.push({ plateText, timestamp: Date.now() });
+  q.push({ plateText, timestamp: Date.now(), latitude: gps?.latitude ?? null, longitude: gps?.longitude ?? null });
   localStorage.setItem(PENDING_KEY, JSON.stringify(q));
 }
 
@@ -94,12 +95,35 @@ export default function Check() {
   const rafRef        = useRef(null);
   const frameCountRef = useRef(0);
   const trackerRef    = useRef(null);
+  const gpsRef        = useRef({ latitude: null, longitude: null });
 
-  const [appState,     setAppState]     = useState(STATE.LOADING_MODEL);
-  const [errorMsg,     setErrorMsg]     = useState("");
-  const [modelReady,   setModelReady]   = useState(false);
-  const [modelFailed,  setModelFailed]  = useState(false);
-  const [pendingCount, setPendingCount] = useState(() => getPending().length);
+  const [appState,       setAppState]       = useState(STATE.LOADING_MODEL);
+  const [errorMsg,       setErrorMsg]       = useState("");
+  const [modelReady,     setModelReady]     = useState(false);
+  const [modelFailed,    setModelFailed]    = useState(false);
+  const [pendingCount,   setPendingCount]   = useState(() => getPending().length);
+  const [violationTargets, setViolationTargets] = useState([]); // [{ check_log_id, plate_text }, ...]
+  const [activeViolation,  setActiveViolation]  = useState(null); // the one open in the modal
+  const [activeTracks,     setActiveTracks]     = useState([]);   // mirror of tracker state for tap targets
+
+  // Ref so checkPlate (memoised) can reach the latest setter without being recreated.
+  const addViolationTargetRef = useRef(null);
+  addViolationTargetRef.current = (entry) => {
+    setViolationTargets((prev) =>
+      prev.some((t) => t.check_log_id === entry.check_log_id) ? prev : [...prev, entry]
+    );
+  };
+
+  // Request GPS once on mount — optional, errors are silently ignored.
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        gpsRef.current = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      },
+      () => {},
+    );
+  }, []);
 
   const syncPending = useCallback(async () => {
     const pending = getPending();
@@ -107,7 +131,11 @@ export default function Check() {
     const remaining = [];
     for (const item of pending) {
       try {
-        await client.post("/api/check/", { plate_text: item.plateText });
+        await client.post("/api/check/", {
+          plate_text: item.plateText,
+          latitude:   item.latitude,
+          longitude:  item.longitude,
+        });
       } catch {
         remaining.push(item);
       }
@@ -142,15 +170,22 @@ export default function Check() {
     }
 
     if (!navigator.onLine) {
-      addPending(plateText);
+      addPending(plateText, gpsRef.current);
       setPendingCount(getPending().length);
       track.result = { offline: true, plate_text: plateText };
       return;
     }
 
     try {
-      const { data } = await client.post("/api/check/", { plate_text: plateText });
+      const { data } = await client.post("/api/check/", {
+        plate_text: plateText,
+        latitude:   gpsRef.current.latitude,
+        longitude:  gpsRef.current.longitude,
+      });
       track.result = data;
+      if (data.registered === false) {
+        addViolationTargetRef.current({ check_log_id: data.check_log_id, plate_text: data.plate_text });
+      }
     } catch {
       track.result = { plate_text: plateText };
     }
@@ -184,7 +219,17 @@ export default function Check() {
       }
 
       // Draw every frame so the overlay stays smooth even between detections
-      drawTracks(overlayRef.current, video, trackerRef.current?.activeBoxes() ?? []);
+      const boxes = trackerRef.current?.activeBoxes() ?? [];
+      drawTracks(overlayRef.current, video, boxes);
+
+      // Keep React in sync for tap targets — only update when unregistered tracks change
+      const unregistered = boxes.filter((t) => t.result?.registered === false && t.result?.check_log_id);
+      setActiveTracks((prev) => {
+        const ids = unregistered.map((t) => t.result.check_log_id).join(",");
+        const prevIds = prev.map((t) => t.result.check_log_id).join(",");
+        return ids === prevIds ? prev : unregistered;
+      });
+
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -263,6 +308,29 @@ export default function Check() {
         <canvas ref={overlayRef}
           className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
 
+        {/* Transparent tap targets over each unregistered plate box */}
+        {activeTracks.map(({ box, result }) => {
+          const canvas = overlayRef.current;
+          if (!canvas) return null;
+          const scaleX = canvas.clientWidth  / (canvas.width  || 1);
+          const scaleY = canvas.clientHeight / (canvas.height || 1);
+          const x1 = (box.corners ? Math.min(...box.corners.map((c) => c[0])) : box.x1) * scaleX;
+          const y1 = (box.corners ? Math.min(...box.corners.map((c) => c[1])) : box.y1) * scaleY;
+          const x2 = (box.corners ? Math.max(...box.corners.map((c) => c[0])) : box.x2) * scaleX;
+          const y2 = (box.corners ? Math.max(...box.corners.map((c) => c[1])) : box.y2) * scaleY;
+          const target = violationTargets.find((t) => t.check_log_id === result.check_log_id);
+          if (!target) return null;
+          return (
+            <button
+              key={result.check_log_id}
+              onClick={() => setActiveViolation(target)}
+              style={{ left: x1, top: y1, width: x2 - x1, height: y2 - y1 }}
+              className="absolute border-2 border-transparent"
+              aria-label={`Issue violation for ${result.plate_text}`}
+            />
+          );
+        })}
+
         {isScanning && !modelReady && !modelFailed && (
           <div className="absolute top-0 left-0 right-0 pointer-events-none">
             <div className="h-1 bg-white/10 overflow-hidden">
@@ -293,6 +361,20 @@ export default function Check() {
           </div>
         )}
 
+        {violationTargets.length > 0 && !activeViolation && (
+          <div className="absolute bottom-20 left-4 right-4 flex flex-col gap-2">
+            {violationTargets.map((t) => (
+              <button
+                key={t.check_log_id}
+                onClick={() => setActiveViolation(t)}
+                className="w-full bg-red-600 text-white font-semibold text-sm py-3 px-5 rounded-2xl shadow-lg"
+              >
+                Issue Violation · {t.plate_text}
+              </button>
+            ))}
+          </div>
+        )}
+
         {appState === STATE.ERROR && (
           <div className="absolute inset-0 bg-black/90 flex flex-col items-center justify-center px-8 gap-5">
             <p className="text-white text-center text-sm">{errorMsg}</p>
@@ -306,6 +388,18 @@ export default function Check() {
           </div>
         )}
       </div>
+
+      {activeViolation && (
+        <ViolationModal
+          check_log_id={activeViolation.check_log_id}
+          plate_text={activeViolation.plate_text}
+          onClose={() => setActiveViolation(null)}
+          onIssued={() => {
+            setViolationTargets((prev) => prev.filter((t) => t.check_log_id !== activeViolation.check_log_id));
+            setActiveViolation(null);
+          }}
+        />
+      )}
 
       <BottomNav />
     </div>

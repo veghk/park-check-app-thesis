@@ -6,6 +6,7 @@ import Setup from "./pages/Setup";
 import Home from "./pages/Home";
 import Check from "./pages/Check";
 import Settings from "./pages/Settings";
+import History from "./pages/History";
 
 export default function App() {
   return (
@@ -42,6 +43,14 @@ export default function App() {
             element={
               <PrivateRoute>
                 <Settings />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <PrivateRoute>
+                <History />
               </PrivateRoute>
             }
           />
