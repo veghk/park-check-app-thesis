@@ -16,12 +16,23 @@ export default function CompanyDashboard() {
   const [formLoading,  setFormLoading]  = useState(false);
   const [installed,    setInstalled]    = useState(false);
 
+  const [plates,           setPlates]           = useState([]);
+  const [platesLoading,    setPlatesLoading]    = useState(true);
+  const [deletePlateTarget, setDeletePlateTarget] = useState(null);
+  const [showPlateForm,    setShowPlateForm]    = useState(false);
+  const [plateForm,        setPlateForm]        = useState({ plate_number: "", owner_name: "", valid_from: "", valid_until: "" });
+  const [plateFormError,   setPlateFormError]   = useState("");
+  const [plateFormLoading, setPlateFormLoading] = useState(false);
+
   const installPrompt = window.__installPromptRef;
 
   useEffect(() => {
     client.get("/api/enforcers/")
       .then(({ data }) => setEnforcers(data))
       .finally(() => setLoading(false));
+    client.get("/api/plates/")
+      .then(({ data }) => setPlates(data))
+      .finally(() => setPlatesLoading(false));
   }, []);
 
   async function handleInstall() {
@@ -59,6 +70,39 @@ export default function CompanyDashboard() {
     await client.delete(`/api/enforcers/${id}/`);
     setEnforcers((prev) => prev.filter((e) => e.id !== id));
     setDeleteTarget(null);
+  }
+
+  async function handleCreatePlate(e) {
+    e.preventDefault();
+    setPlateFormError("");
+    setPlateFormLoading(true);
+    try {
+      const payload = {
+        plate_number: plateForm.plate_number,
+        owner_name:   plateForm.owner_name   || "",
+        valid_from:   plateForm.valid_from   || null,
+        valid_until:  plateForm.valid_until  || null,
+      };
+      const { data } = await client.post("/api/plates/", payload);
+      setPlates((prev) => [data, ...prev]);
+      setPlateForm({ plate_number: "", owner_name: "", valid_from: "", valid_until: "" });
+      setShowPlateForm(false);
+    } catch (err) {
+      const msg = err.response?.data;
+      setPlateFormError(
+        typeof msg === "object"
+          ? Object.values(msg).flat().join(" ")
+          : "Failed to add plate."
+      );
+    } finally {
+      setPlateFormLoading(false);
+    }
+  }
+
+  async function handleDeletePlate(id) {
+    await client.delete(`/api/plates/${id}/`);
+    setPlates((prev) => prev.filter((p) => p.id !== id));
+    setDeletePlateTarget(null);
   }
 
   function handleLogout() {
@@ -198,6 +242,112 @@ export default function CompanyDashboard() {
           <button onClick={() => setShowForm(true)}
             className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 font-medium">
             + Add Enforcer
+          </button>
+        )}
+
+        {/* Plates section */}
+        <div>
+          <p className="font-semibold text-gray-900 text-sm mb-3">
+            Registered Plates
+            {!platesLoading && <span className="text-gray-400 font-normal ml-1">({plates.length})</span>}
+          </p>
+
+          {platesLoading && <p className="text-sm text-gray-400">Loading…</p>}
+
+          {!platesLoading && plates.length === 0 && (
+            <p className="text-sm text-gray-400">No plates yet.</p>
+          )}
+
+          <div className="space-y-2">
+            {plates.map((plate) => (
+              <div key={plate.id}
+                className="flex items-center justify-between border border-gray-200 rounded-xl px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 tracking-wider">{plate.plate_number}</p>
+                  {plate.owner_name && <p className="text-xs text-gray-400">{plate.owner_name}</p>}
+                  {(plate.valid_from || plate.valid_until) && (
+                    <p className="text-xs text-gray-400">
+                      {plate.valid_from || "–"} → {plate.valid_until || "–"}
+                    </p>
+                  )}
+                </div>
+                {deletePlateTarget === plate.id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Delete?</span>
+                    <button onClick={() => handleDeletePlate(plate.id)}
+                      className="text-xs text-red-600 font-semibold">Yes</button>
+                    <button onClick={() => setDeletePlateTarget(null)}
+                      className="text-xs text-gray-400">No</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setDeletePlateTarget(plate.id)}
+                    className="text-gray-400 hover:text-red-500 p-1">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Add Plate form */}
+        {showPlateForm ? (
+          <div className="border border-gray-200 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-semibold text-gray-900 text-sm">Add Plate</p>
+              <button onClick={() => { setShowPlateForm(false); setPlateFormError(""); }}
+                className="text-gray-400 text-xs">Cancel</button>
+            </div>
+            <form onSubmit={handleCreatePlate} className="space-y-3">
+              <input
+                type="text"
+                placeholder="Plate number (e.g. ABC123)"
+                required
+                value={plateForm.plate_number}
+                onChange={(e) => setPlateForm((f) => ({ ...f, plate_number: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                type="text"
+                placeholder="Owner name (optional)"
+                value={plateForm.owner_name}
+                onChange={(e) => setPlateForm((f) => ({ ...f, owner_name: e.target.value }))}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-400 mb-1 block">Valid from</label>
+                  <input
+                    type="date"
+                    value={plateForm.valid_from}
+                    onChange={(e) => setPlateForm((f) => ({ ...f, valid_from: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-400 mb-1 block">Valid until</label>
+                  <input
+                    type="date"
+                    value={plateForm.valid_until}
+                    onChange={(e) => setPlateForm((f) => ({ ...f, valid_until: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              {plateFormError && <p className="text-xs text-red-500">{plateFormError}</p>}
+              <button type="submit" disabled={plateFormLoading}
+                className="w-full py-3 bg-primary text-white text-sm font-semibold rounded-xl disabled:opacity-50">
+                {plateFormLoading ? "Adding…" : "Add Plate"}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <button onClick={() => setShowPlateForm(true)}
+            className="w-full py-3 border-2 border-dashed border-gray-200 rounded-2xl text-sm text-gray-400 font-medium">
+            + Add Plate
           </button>
         )}
 
