@@ -43,17 +43,17 @@ class CustomUserAdmin(UserAdmin):
 
 @admin.register(CheckLog)
 class CheckLogAdmin(admin.ModelAdmin):
-    list_display = ["plate_text", "registered", "officer", "checked_at", "latitude", "longitude"]
+    list_display = ["plate_text", "registered", "enforcer", "checked_at", "latitude", "longitude"]
     list_filter = ["registered"]
-    search_fields = ["plate_text", "officer__username"]
-    readonly_fields = ["officer", "plate_text", "plate", "registered", "latitude", "longitude", "checked_at"]
+    search_fields = ["plate_text", "enforcer__username"]
+    readonly_fields = ["enforcer", "plate_text", "plate", "registered", "latitude", "longitude", "checked_at"]
 
 
 @admin.register(Violation)
 class ViolationAdmin(admin.ModelAdmin):
-    list_display = ["plate_text", "officer", "issued_at"]
-    search_fields = ["plate_text", "officer__username"]
-    readonly_fields = ["check_log", "officer", "plate_text", "latitude", "longitude", "issued_at"]
+    list_display = ["plate_text", "enforcer", "issued_at"]
+    search_fields = ["plate_text", "enforcer__username"]
+    readonly_fields = ["check_log", "enforcer", "plate_text", "latitude", "longitude", "issued_at"]
 
 
 @admin.register(Plate)

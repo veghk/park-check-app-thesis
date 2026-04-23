@@ -1,3 +1,5 @@
+import datetime
+
 from rest_framework import viewsets, permissions, views, generics
 from rest_framework.response import Response
 
@@ -55,9 +57,16 @@ class MeView(views.APIView):
 
 
 class PlateViewSet(viewsets.ModelViewSet):
-    queryset = Plate.objects.all().order_by("-created_at")
     serializer_class = PlateSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsCompanyAdmin]
+
+    def get_queryset(self):
+        company = self.request.user.company_admin_profile.company
+        return Plate.objects.filter(company=company).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        company = self.request.user.company_admin_profile.company
+        serializer.save(company=company)
 
 
 class EnforcerViewSet(viewsets.ModelViewSet):
@@ -81,6 +90,18 @@ class EnforcerViewSet(viewsets.ModelViewSet):
         instance.user.delete()
 
 
+def _is_plate_valid_today(plate):
+    """Return True if plate is active and within its validity window (if set)."""
+    if not plate.is_active:
+        return False
+    today = datetime.date.today()
+    if plate.valid_from and today < plate.valid_from:
+        return False
+    if plate.valid_until and today > plate.valid_until:
+        return False
+    return True
+
+
 class CheckView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -90,21 +111,35 @@ class CheckView(views.APIView):
         if not plate_text:
             return Response({"error": "No plate text provided."}, status=400)
 
-        plate = Plate.objects.filter(plate_number=plate_text, is_active=True).first()
+        company = None
+        if hasattr(request.user, "enforcer_profile"):
+            company = request.user.enforcer_profile.company
+        elif hasattr(request.user, "company_admin_profile"):
+            company = request.user.company_admin_profile.company
+
+        candidate = None
+        if company:
+            candidate = Plate.objects.filter(
+                company=company, plate_number=plate_text
+            ).first()
+        else:
+            candidate = Plate.objects.filter(plate_number=plate_text).first()
+
+        is_valid = candidate is not None and _is_plate_valid_today(candidate)
 
         log = CheckLog.objects.create(
-            officer=request.user,
+            enforcer=request.user,
             plate_text=plate_text,
-            plate=plate,
-            registered=plate is not None,
+            plate=candidate if is_valid else None,
+            registered=is_valid,
             latitude=request.data.get("latitude"),
             longitude=request.data.get("longitude"),
         )
 
         return Response({
             "plate_text": plate_text,
-            "registered": plate is not None,
-            "owner_name": plate.owner_name if plate else "",
+            "registered": is_valid,
+            "owner_name": candidate.owner_name if is_valid else "",
             "check_log_id": log.id,
         })
 
@@ -114,7 +149,7 @@ class CheckLogListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return CheckLog.objects.filter(officer=self.request.user)
+        return CheckLog.objects.filter(enforcer=self.request.user)
 
 
 class ViolationCreateView(views.APIView):
@@ -127,7 +162,7 @@ class ViolationCreateView(views.APIView):
             return Response({"error": "check_log_id is required."}, status=400)
 
         try:
-            log = CheckLog.objects.get(id=check_log_id, officer=request.user)
+            log = CheckLog.objects.get(id=check_log_id, enforcer=request.user)
         except CheckLog.DoesNotExist:
             return Response({"error": "Check log not found."}, status=404)
 
@@ -136,7 +171,7 @@ class ViolationCreateView(views.APIView):
 
         violation = Violation.objects.create(
             check_log=log,
-            officer=request.user,
+            enforcer=request.user,
             plate_text=log.plate_text,
             latitude=log.latitude,
             longitude=log.longitude,

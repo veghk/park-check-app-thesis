@@ -51,11 +51,28 @@ class EnforcerCreateSerializer(serializers.Serializer):
 class PlateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Plate
-        fields = ["id", "plate_number", "owner_name", "notes", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["created_at", "updated_at"]
+        fields = [
+            "id", "company", "plate_number", "owner_name", "notes",
+            "is_active", "valid_from", "valid_until", "created_at", "updated_at",
+        ]
+        read_only_fields = ["company", "created_at", "updated_at"]
 
     def validate_plate_number(self, value):
         return re.sub(r"[^A-Z0-9]", "", value.upper())
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        company = None
+        if request and hasattr(request.user, "company_admin_profile"):
+            company = request.user.company_admin_profile.company
+        plate_number = attrs.get("plate_number")
+        if company and plate_number:
+            qs = Plate.objects.filter(company=company, plate_number=plate_number)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({"plate_number": "This plate number already exists for your company."})
+        return attrs
 
 
 class CheckLogSerializer(serializers.ModelSerializer):
