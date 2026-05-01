@@ -19,3 +19,10 @@ export const DETECTION_THRESHOLD = 0.4;
 
 // Two overlapping boxes are merged if they overlap more than this
 export const NMS_IOU_THRESHOLD = 0.45;
+
+// YOLO model input size (must be a multiple of 32; the model was trained at 416)
+export const INPUT_SIZE = 416;
+
+// Perspective-warped plate canvas size (European plate aspect ~4:1)
+export const PLATE_W = 280;
+export const PLATE_H = 70;

@@ -2,6 +2,7 @@ import axios from "axios";
 
 const client = axios.create({
   baseURL: "/",
+  timeout: 8000,
 });
 
 client.interceptors.request.use((config) => {

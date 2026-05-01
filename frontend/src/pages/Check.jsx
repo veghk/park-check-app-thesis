@@ -69,10 +69,11 @@ function drawTracks(canvas, video, tracks) {
 
     if (result) {
       const label =
-        result.offline    ? `${result.plate_text} · saved offline` :
-        result.registered ? `${result.plate_text} · ${result.owner_name}` :
-        result.plate_text ? `${result.plate_text} · not registered` :
-                            "no text read";
+        result.offline       ? `${result.plate_text} · saved offline` :
+        result.networkError  ? `${result.plate_text} · server unreachable` :
+        result.registered    ? `${result.plate_text} · ${result.owner_name}` :
+        result.plate_text    ? `${result.plate_text} · not registered` :
+                               "no text read";
 
       const bx = box.corners ? box.corners[3][0] : box.x1;
       const by = box.corners ? box.corners[3][1] : box.y2;
@@ -105,6 +106,8 @@ export default function Check() {
   const [violationTargets, setViolationTargets] = useState([]); // [{ check_log_id, plate_text }, ...]
   const [activeViolation,  setActiveViolation]  = useState(null); // the one open in the modal
   const [activeTracks,     setActiveTracks]     = useState([]);   // mirror of tracker state for tap targets
+  const [gpsError,         setGpsError]         = useState(false);
+  const [networkError,     setNetworkError]     = useState(false);
 
   // Ref so checkPlate (memoised) can reach the latest setter without being recreated.
   const addViolationTargetRef = useRef(null);
@@ -187,7 +190,7 @@ export default function Check() {
         addViolationTargetRef.current({ check_log_id: data.check_log_id, plate_text: data.plate_text });
       }
     } catch {
-      track.result = { plate_text: plateText };
+      track.result = { plate_text: plateText, networkError: true };
     }
   }, []);
 
@@ -229,6 +232,8 @@ export default function Check() {
         const prevIds = prev.map((t) => t.result.check_log_id).join(",");
         return ids === prevIds ? prev : unregistered;
       });
+
+      setNetworkError(boxes.some((t) => t.result?.networkError));
 
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -291,6 +296,15 @@ export default function Check() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [appState, startLoop]);
 
+  function openViolation(target) {
+    if (gpsRef.current.latitude === null) {
+      setGpsError(true);
+      return;
+    }
+    setGpsError(false);
+    setActiveViolation(target);
+  }
+
   function handleRetry() {
     setErrorMsg("");
     setAppState(STATE.LOADING_MODEL);
@@ -323,7 +337,7 @@ export default function Check() {
           return (
             <button
               key={result.check_log_id}
-              onClick={() => setActiveViolation(target)}
+              onClick={() => openViolation(target)}
               style={{ left: x1, top: y1, width: x2 - x1, height: y2 - y1 }}
               className="absolute border-2 border-transparent"
               aria-label={`Issue violation for ${result.plate_text}`}
@@ -353,6 +367,14 @@ export default function Check() {
           </div>
         )}
 
+        {networkError && isScanning && (
+          <div className="absolute top-4 left-4">
+            <span className="bg-red-700/80 text-white text-xs px-2.5 py-1 rounded-full">
+              Server unreachable
+            </span>
+          </div>
+        )}
+
         {isScanning && (
           <div className="absolute bottom-24 left-0 right-0 flex flex-col items-center gap-2 pointer-events-none">
             {modelFailed  && <span className="bg-black/50 text-white/60 text-xs px-3 py-1 rounded-full">Detection unavailable, no model loaded</span>}
@@ -363,10 +385,15 @@ export default function Check() {
 
         {violationTargets.length > 0 && !activeViolation && (
           <div className="absolute bottom-20 left-4 right-4 flex flex-col gap-2">
+            {gpsError && (
+              <p className="text-center text-xs text-red-300 bg-black/60 px-3 py-2 rounded-xl">
+                Location unavailable. Enable GPS to issue a violation.
+              </p>
+            )}
             {violationTargets.map((t) => (
               <button
                 key={t.check_log_id}
-                onClick={() => setActiveViolation(t)}
+                onClick={() => openViolation(t)}
                 className="w-full bg-red-600 text-white font-semibold text-sm py-3 px-5 rounded-2xl shadow-lg"
               >
                 Issue Violation · {t.plate_text}

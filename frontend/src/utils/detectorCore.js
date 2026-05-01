@@ -4,12 +4,8 @@
  * eval script tests the exact same code that runs in production.
  */
 
-// Model was trained at 416x416 (must be a multiple of 32 for YOLO stride)
-export const INPUT_SIZE = 416;
-
-// Plate output canvas size for perspective warp (European plate aspect ~4:1)
-export const PLATE_W = 280;
-export const PLATE_H = 70;
+import { INPUT_SIZE, PLATE_W, PLATE_H } from "../config";
+export { INPUT_SIZE, PLATE_W, PLATE_H };
 
 const MASK_THRESHOLD = 0.5;
 

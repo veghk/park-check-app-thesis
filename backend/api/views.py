@@ -169,6 +169,9 @@ class ViolationCreateView(views.APIView):
         if hasattr(log, "violation"):
             return Response({"error": "Violation already issued for this check."}, status=409)
 
+        if log.latitude is None or log.longitude is None:
+            return Response({"error": "Location data is missing for this check."}, status=400)
+
         violation = Violation.objects.create(
             check_log=log,
             enforcer=request.user,

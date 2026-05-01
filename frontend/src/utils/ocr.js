@@ -68,13 +68,6 @@ async function _runOCR(cropCanvas) {
     const text = decode(out.data);
     const tDecode = performance.now();
 
-    console.log(
-      `[OCR] preprocess=${(tPreprocess-t0).toFixed(0)}ms` +
-      ` inference=${(tInference-tPreprocess).toFixed(0)}ms` +
-      ` decode=${(tDecode-tInference).toFixed(0)}ms` +
-      ` total=${(tDecode-t0).toFixed(0)}ms` +
-      ` result=${JSON.stringify(text)}`
-    );
     return text;
   } catch (e) {
     console.error("[OCR] inference failed:", e);

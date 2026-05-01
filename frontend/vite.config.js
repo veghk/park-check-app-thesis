@@ -65,7 +65,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://web:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
       },
     },
@@ -75,7 +75,7 @@ export default defineConfig({
     port: 4173,
     proxy: {
       "/api": {
-        target: "http://web:8000",
+        target: "http://backend:8000",
         changeOrigin: true,
       },
     },

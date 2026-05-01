@@ -95,14 +95,6 @@ async function _runDetection(canvas, threshold) {
   );
   const tPost = performance.now();
 
-  console.log(
-    `[Detection] preprocess=${(tPreprocess-t0).toFixed(0)}ms` +
-    ` inference=${(tInference-tPreprocess).toFixed(0)}ms` +
-    ` postprocess=${(tPost-tInference).toFixed(0)}ms` +
-    ` total=${(tPost-t0).toFixed(0)}ms` +
-    ` dets=${detections.length}`
-  );
-
   return detections.map(({ bbox, confidence, corners }) => ({ ...bbox, confidence, corners }));
 }
 
