@@ -23,15 +23,15 @@ function preprocess(canvas) {
   return tensor;
 }
 
-// Applies the perspective warp H to srcCanvas and writes a PLATE_W x PLATE_H canvas.
-// Uses inverse mapping (per output pixel, find source pixel) + bilinear interpolation.
-// Lee et al. (PMC, 2024) apply this step to normalise tilted plates before OCR.
+// Applies the perspective warp H to srcCanvas
+// writes a PLATE_W x PLATE_H canvas
+// uses inverse mapping + bilinear interpolation
 function warpPerspective(srcCanvas, H) {
   const [h0,h1,h2,h3,h4,h5,h6,h7,h8] = H;
   const det = h0*(h4*h8-h5*h7) - h1*(h3*h8-h5*h6) + h2*(h3*h7-h4*h6);
   if (Math.abs(det) < 1e-10) return null;
 
-  // Analytic inverse of a 3x3 matrix via cofactors / determinant
+  // direct inverse of a 3x3 matrix via cofactors / determinant
   const inv = [
     (h4*h8-h5*h7)/det, (h2*h7-h1*h8)/det, (h1*h5-h2*h4)/det,
     (h5*h6-h3*h8)/det, (h0*h8-h2*h6)/det, (h2*h3-h0*h5)/det,
@@ -68,20 +68,12 @@ function warpPerspective(srcCanvas, H) {
   return out;
 }
 
-export function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
-  return _runDetection(canvas, threshold);
-}
-
-async function _runDetection(canvas, threshold) {
+export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
   const model = await getModel("plateDetector");
 
-  const t0 = performance.now();
   const tensor = preprocess(canvas);
-  const tPreprocess = performance.now();
-
   const inputTensor = new ort.Tensor("float32", tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
   const outputs = await runInference(model, { [model.inputNames[0]]: inputTensor });
-  const tInference = performance.now();
 
   // YOLOv8-seg: two outputs
   const output0 = outputs[model.outputNames[0]]; // [1, 37, numDets]
@@ -93,13 +85,14 @@ async function _runDetection(canvas, threshold) {
     canvas.width, canvas.height,
     threshold, NMS_IOU_THRESHOLD,
   );
-  const tPost = performance.now();
 
   return detections.map(({ bbox, confidence, corners }) => ({ ...bbox, confidence, corners }));
 }
 
-// Perspective-corrects a plate region using the 4 corners found by runDetection.
-// corners: [[tlX,tlY],[trX,trY],[brX,brY],[blX,blY]] in source pixel coordinates.
+// Perspective-corrects a plate region
+// using the 4 corners found by runDetection
+// corners: [[tlX,tlY],[trX,trY],[brX,brY],[blX,blY]]
+// in source pixel coordinates
 export function warpPlate(source, corners) {
   const srcCanvas = document.createElement("canvas");
   srcCanvas.width  = source.videoWidth  ?? source.width;

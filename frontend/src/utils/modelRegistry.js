@@ -14,8 +14,10 @@ const REGISTRY = {
   plateOCR:      { url: "/models/plate-ocr.onnx",       providers: ["wasm"] },
 };
 
-// ORT's JSEP WASM runtime has a global mutex - only one model.run() at a time across all sessions.
-// Both detector and ocr must use this shared lock to avoid "Session already started" errors.
+// ORT's JSEP WASM runtime has a global mutex
+// only one model.run() at a time across all sessions
+// both detector and ocr must use this shared lock
+// to avoid "Session already started" errors
 let _inferenceLock = Promise.resolve();
 export function runInference(session, inputs) {
   return (_inferenceLock = _inferenceLock.then(() => session.run(inputs)));

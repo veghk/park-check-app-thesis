@@ -1,4 +1,4 @@
-import datetime
+from datetime import date
 
 from rest_framework import viewsets, permissions, views, generics
 from rest_framework.response import Response
@@ -91,10 +91,9 @@ class EnforcerViewSet(viewsets.ModelViewSet):
 
 
 def _is_plate_valid_today(plate):
-    """Return True if plate is active and within its validity window (if set)."""
     if not plate.is_active:
         return False
-    today = datetime.date.today()
+    today = date.today()
     if plate.valid_from and today < plate.valid_from:
         return False
     if plate.valid_until and today > plate.valid_until:
@@ -169,15 +168,8 @@ class ViolationCreateView(views.APIView):
         if hasattr(log, "violation"):
             return Response({"error": "Violation already issued for this check."}, status=409)
 
-        if log.latitude is None or log.longitude is None:
-            return Response({"error": "Location data is missing for this check."}, status=400)
-
         violation = Violation.objects.create(
             check_log=log,
-            enforcer=request.user,
-            plate_text=log.plate_text,
-            latitude=log.latitude,
-            longitude=log.longitude,
             notes=request.data.get("notes", ""),
         )
 

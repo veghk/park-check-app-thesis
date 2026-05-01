@@ -1,8 +1,9 @@
-import datetime
+from datetime import date, timedelta
+
 import pytest
 from rest_framework.test import APIClient
 
-from api.models import Plate
+from api.models import CheckLog, Plate
 
 CHECK_URL = "/api/check/"
 
@@ -30,13 +31,13 @@ def test_plate_check_unauthenticated():
 
 @pytest.mark.django_db
 def test_plate_within_date_range(enforcer_client, company):
-    today = datetime.date.today()
+    today = date.today()
     Plate.objects.create(
         company=company,
         plate_number="VALID01",
         is_active=True,
-        valid_from=today - datetime.timedelta(days=1),
-        valid_until=today + datetime.timedelta(days=1),
+        valid_from=today - timedelta(days=1),
+        valid_until=today + timedelta(days=1),
     )
     response = enforcer_client.post(CHECK_URL, {"plate_text": "VALID01"}, format="json")
     assert response.status_code == 200
@@ -45,7 +46,7 @@ def test_plate_within_date_range(enforcer_client, company):
 
 @pytest.mark.django_db
 def test_plate_expired(enforcer_client, company):
-    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    yesterday = date.today() - timedelta(days=1)
     Plate.objects.create(
         company=company,
         plate_number="EXP01",
@@ -59,7 +60,7 @@ def test_plate_expired(enforcer_client, company):
 
 @pytest.mark.django_db
 def test_plate_not_yet_valid(enforcer_client, company):
-    tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+    tomorrow = date.today() + timedelta(days=1)
     Plate.objects.create(
         company=company,
         plate_number="FUTURE01",
@@ -119,7 +120,6 @@ def test_checklog_gps_stored(enforcer_client, plate_in_db):
         format="json",
     )
     assert response.status_code == 200
-    from api.models import CheckLog
     log = CheckLog.objects.get(id=response.data["check_log_id"])
     assert abs(log.latitude - 47.4979) < 0.0001
     assert abs(log.longitude - 19.0402) < 0.0001
@@ -127,7 +127,6 @@ def test_checklog_gps_stored(enforcer_client, plate_in_db):
 
 @pytest.mark.django_db
 def test_check_creates_checklog(enforcer_client, plate_in_db):
-    from api.models import CheckLog
     before = CheckLog.objects.count()
     enforcer_client.post(CHECK_URL, {"plate_text": "ABC123"}, format="json")
     assert CheckLog.objects.count() == before + 1

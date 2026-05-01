@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { AuthProvider } from "./context/AuthContext";
 import PrivateRoute from "./components/PrivateRoute";
 import CompanyRoute from "./components/CompanyRoute";
@@ -11,8 +11,9 @@ import Settings from "./pages/Settings";
 import History from "./pages/History";
 import CompanyDashboard from "./pages/CompanyDashboard";
 
-// Capture the PWA install prompt as early as possible so any page can use it.
-// Stored in a module-level ref and exposed via window for CompanyDashboard to pick up.
+// Capture the PWA install prompt as early as possible
+// stored in a module-level ref so any page can use it
+// exposed via window for CompanyDashboard to pick up
 const installPromptRef = { current: null };
 window.__installPromptRef = installPromptRef;
 

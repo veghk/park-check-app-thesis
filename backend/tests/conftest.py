@@ -58,12 +58,6 @@ def other_enforcer_client(other_enforcer_user):
     return _make_client(other_enforcer_user)
 
 
-# Keep generic auth_client alias pointing to enforcer for backwards compat
-@pytest.fixture
-def auth_client(enforcer_client):
-    return enforcer_client
-
-
 @pytest.fixture
 def plate_in_db(company):
     return Plate.objects.create(

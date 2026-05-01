@@ -1,8 +1,5 @@
-/**
- * Pure (no browser API) functions shared between the browser detector and the
- * Node.js evaluation script.  Both import this file directly, which means the
- * eval script tests the exact same code that runs in production.
- */
+// Pure functions with no browser APIs
+// can be imported from Node test environments too
 
 import { INPUT_SIZE, PLATE_W, PLATE_H } from "../config";
 export { INPUT_SIZE, PLATE_W, PLATE_H };
@@ -13,7 +10,8 @@ export function sigmoid(x) {
   return 1 / (1 + Math.exp(-x));
 }
 
-// Morphological dilation: any pixel within r of a set pixel becomes set.
+// Morphological dilation:
+// any pixel within r of a set pixel becomes set
 export function dilate(mask, w, h, r) {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -31,7 +29,8 @@ export function dilate(mask, w, h, r) {
   return out;
 }
 
-// Morphological erosion: a pixel stays set only if all pixels within r are also set.
+// Morphological erosion:
+// a pixel stays set only if all pixels within r are also set
 export function erode(mask, w, h, r) {
   const out = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -49,14 +48,14 @@ export function erode(mask, w, h, r) {
   return out;
 }
 
-// Morphological closing (dilate then erode): fills holes and joins broken regions.
-// Ngo et al. (Applied Sciences, 2023) use this step to clean thresholded plate masks.
+// Morphological closing - cleans up the plate mask
+// removes outlier segment elements
 export function morphClose(mask, w, h, r = 2) {
   return erode(dilate(mask, w, h, r), w, h, r);
 }
 
-// Returns the axis-aligned bounding box of a binary mask as 4 corners [TL, TR, BR, BL].
-// Using min/max extents is simpler and stable enough since the mask is already a tight fit.
+// Returns the bounding box of a binary mask as 4 corners [TL, TR, BR, BL]
+// min/max extents - simpler and stable since the mask is already a tight fit
 export function maskBbox(mask, w, h, scaleX, scaleY) {
   let minX = w, minY = h, maxX = 0, maxY = 0;
   for (let y = 0; y < h; y++) {
@@ -77,7 +76,7 @@ export function maskBbox(mask, w, h, scaleX, scaleY) {
   ];
 }
 
-// Solves Ax=b via Gaussian elimination with partial pivoting.
+// Solves Ax=b via Gaussian elimination with partial pivoting
 export function solveLinear(A, b) {
   const n = b.length;
   const M = A.map((row, i) => [...row, b[i]]);
@@ -98,9 +97,9 @@ export function solveLinear(A, b) {
   return M.map((row, i) => row[n] / row[i]);
 }
 
-// Computes the 3x3 perspective transform H mapping src[i] to dst[i].
-// Uses the Direct Linear Transform (DLT) formulation: 8 equations, 8 unknowns.
-// Returns H as a flat 9-element array (row-major), with H[8]=1 (normalised).
+// Computes the 3x3 perspective transform H mapping src[i] to dst[i]
+// Uses the Direct Linear Transform (DLT): 8 equations, 8 unknowns
+// Returns H as a flat 9-element array (row-major), with H[8]=1
 export function getPerspectiveTransform(src, dst) {
   const A = [], b = [];
   for (let i = 0; i < 4; i++) {
@@ -113,7 +112,7 @@ export function getPerspectiveTransform(src, dst) {
   return h ? [...h, 1] : null;
 }
 
-// IoU between two axis-aligned boxes in model input space.
+// IoU between two axis-aligned boxes in model input space
 function bboxIou(a, b) {
   const ix1 = Math.max(a.bx1, b.bx1), iy1 = Math.max(a.by1, b.by1);
   const ix2 = Math.min(a.bx2, b.bx2), iy2 = Math.min(a.by2, b.by2);
@@ -123,7 +122,7 @@ function bboxIou(a, b) {
   return inter / (aArea + bArea - inter + 1e-6);
 }
 
-// Reconstructs the segmentation mask for one detection and returns its corners.
+// Reconstructs the segmentation mask for one detection and returns its corners
 function reconstructCorners(pred, proto, idx, numDets, protoH, protoW, origW, origH, bx1, by1, bx2, by2) {
   const protoPixels = protoH * protoW;
   const pxScale = protoW / INPUT_SIZE;
@@ -154,9 +153,9 @@ function reconstructCorners(pred, proto, idx, numDets, protoH, protoW, origW, or
  * Applies confidence threshold + NMS, then reconstructs the segmentation mask
  * for each surviving detection.
  *
- * @param {Float32Array} pred         - output0 data, row-major [37 × numDets]
+ * @param {Float32Array} pred         - output0 data, row-major [37 x numDets]
  *                                      rows 0-3: cx/cy/w/h, row 4: conf, rows 5-36: mask coeffs
- * @param {Float32Array} proto        - output1 data [32 × protoH × protoW]
+ * @param {Float32Array} proto        - output1 data [32 x protoH x protoW]
  * @param {number}       numDets      - number of candidate detections
  * @param {number}       protoH       - prototype mask height (typically 104)
  * @param {number}       protoW       - prototype mask width
@@ -166,8 +165,8 @@ function reconstructCorners(pred, proto, idx, numDets, protoH, protoW, origW, or
  * @param {number}       nmsThreshold - IoU threshold for NMS (default 0.45)
  *
  * @returns {Array<{ corners, confidence, bbox }>} sorted by confidence descending
- *   corners: [[tlX,tlY],[trX,trY],[brX,brY],[blX,blY]] in origW×origH pixel space
- *   bbox:    { x1, y1, x2, y2 } in origW×origH pixel space
+ *   corners: [[tlX,tlY],[trX,trY],[brX,brY],[blX,blY]] in origW x origH pixel space
+ *   bbox:    { x1, y1, x2, y2 } in origW x origH pixel space
  */
 export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW, origH, threshold = 0.4, nmsThreshold = 0.45) {
   const candidates = [];
@@ -185,7 +184,7 @@ export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW
   // Sort by confidence descending for greedy NMS
   candidates.sort((a, b) => b.conf - a.conf);
 
-  // Greedy NMS: keep a box only if it doesn't overlap too much with a higher-confidence kept box
+  // Greedy NMS: suppress boxes that overlap too much with a higher-confidence one
   const kept = [];
   const suppressed = new Uint8Array(candidates.length);
   for (let i = 0; i < candidates.length; i++) {
@@ -198,7 +197,7 @@ export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW
     }
   }
 
-  // Reconstruct mask + corners only for survivors (avoids wasted work on suppressed detections)
+  // Reconstruct mask + corners only for survivors
   const sx = origW / INPUT_SIZE;
   const sy = origH / INPUT_SIZE;
 
@@ -209,7 +208,8 @@ export function extractAllDetections(pred, proto, numDets, protoH, protoW, origW
   }));
 }
 
-// Returns the single best detection, or null if nothing passes the threshold.
+// Returns the single best detection
+// or null if nothing passes the threshold
 export function extractDetection(pred, proto, numDets, protoH, protoW, origW, origH, threshold = 0.4) {
   return extractAllDetections(pred, proto, numDets, protoH, protoW, origW, origH, threshold)[0] ?? null;
 }

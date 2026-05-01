@@ -7,6 +7,8 @@ from .models import Company, Plate, CheckLog, Violation, Enforcer
 User = get_user_model()
 
 
+# not wired to any endpoint yet
+# kept for future company management API
 class CompanySerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
@@ -58,6 +60,8 @@ class PlateSerializer(serializers.ModelSerializer):
         read_only_fields = ["company", "created_at", "updated_at"]
 
     def validate_plate_number(self, value):
+        # strip chars that are not uppercase letters or nums
+        # example: "ab-12 cd" -> "AB12CD"
         return re.sub(r"[^A-Z0-9]", "", value.upper())
 
     def validate(self, attrs):
@@ -92,5 +96,5 @@ class CheckLogSerializer(serializers.ModelSerializer):
 class ViolationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Violation
-        fields = ["id", "check_log", "plate_text", "latitude", "longitude", "notes", "issued_at"]
-        read_only_fields = ["plate_text", "latitude", "longitude", "issued_at"]
+        fields = ["id", "check_log", "notes", "issued_at"]
+        read_only_fields = ["issued_at"]

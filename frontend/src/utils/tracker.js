@@ -25,7 +25,8 @@ class Track {
   refresh(box) {
     this.latestBox = box;
     this.missCount = 0;
-    // Once we have a result, slide the anchor with the plate so it doesn't drift out of range
+    // Once we have a result, slide the anchor with the plate
+    // so it doesn't drift out of range
     if (this.result) {
       this.anchorCx = (box.x1 + box.x2) / 2;
       this.anchorCy = (box.y1 + box.y2) / 2;
@@ -33,8 +34,9 @@ class Track {
   }
 }
 
-// Tracks multiple plates across frames. The caller writes OCR results back onto
-// the track object directly, which the draw loop picks up on the next frame.
+// Tracks multiple plates across frames
+// the caller writes OCR results back onto the track object
+// the draw loop picks it up on the next frame
 export class Tracker {
   constructor(onStable, delayMs = STABILIZER_DELAY_MS, tolerance = STABILIZER_TOLERANCE) {
     this.onStable  = onStable;

@@ -39,7 +39,8 @@ function addPending(plateText, gps) {
   localStorage.setItem(PENDING_KEY, JSON.stringify(q));
 }
 
-// Draw all tracked boxes on the canvas, with result labels below each box.
+// Draw all tracked boxes on the canvas
+// with result labels below each box
 function drawTracks(canvas, video, tracks) {
   if (!canvas || !video) return;
   canvas.width  = video.videoWidth;
@@ -109,15 +110,39 @@ export default function Check() {
   const [gpsError,         setGpsError]         = useState(false);
   const [networkError,     setNetworkError]     = useState(false);
 
-  // Ref so checkPlate (memoised) can reach the latest setter without being recreated.
+  const violationTimersRef = useRef({});
+  // Refs so startLoop never needs modelReady/networkError in its dep array
+  const modelReadyRef    = useRef(false);
+  const networkErrorRef  = useRef(false);
+
+  useEffect(() => { modelReadyRef.current = modelReady; }, [modelReady]);
+
+  useEffect(() => {
+    return () => { Object.values(violationTimersRef.current).forEach(clearTimeout); };
+  }, []);
+
+  // Ref so checkPlate can reach the latest setter without being recreated
   const addViolationTargetRef = useRef(null);
   addViolationTargetRef.current = (entry) => {
-    setViolationTargets((prev) =>
-      prev.some((t) => t.check_log_id === entry.check_log_id) ? prev : [...prev, entry]
-    );
+    // Reset the 15 s expiry timer
+    // also handles the plate disappearing and re-appearing
+    clearTimeout(violationTimersRef.current[entry.plate_text]);
+    violationTimersRef.current[entry.plate_text] = setTimeout(() => {
+      setViolationTargets((prev) => prev.filter((t) => t.plate_text !== entry.plate_text));
+      delete violationTimersRef.current[entry.plate_text];
+    }, 15_000);
+
+    // Add or replace by plate_text
+    // so the same plate never produces two buttons
+    setViolationTargets((prev) => {
+      const exists = prev.some((t) => t.plate_text === entry.plate_text);
+      return exists
+        ? prev.map((t) => (t.plate_text === entry.plate_text ? entry : t))
+        : [...prev, entry];
+    });
   };
 
-  // Request GPS once on mount — optional, errors are silently ignored.
+  // Request GPS once on mount - optional, errors are ignored
   useEffect(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
@@ -147,9 +172,10 @@ export default function Check() {
     setPendingCount(remaining.length);
   }, []);
 
-  // Called by the tracker when a plate has been stable long enough.
-  // Runs OCR + backend check and writes the result back onto the track object
-  // so the next draw call picks it up. The camera keeps running the whole time.
+  // Called by the tracker when a plate has been stable long enough
+  // runs OCR + backend check
+  // writes the result back onto the track object
+  // camera keeps running the whole time
   const checkPlate = useCallback(async (track) => {
     const video = videoRef.current;
     if (!video) return;
@@ -211,7 +237,7 @@ export default function Check() {
         offscreen.height = video.videoHeight;
         offscreen.getContext("2d").drawImage(video, 0, 0);
 
-        if (modelReady) {
+        if (modelReadyRef.current) {
           try {
             const boxes = await runDetection(offscreen);
             trackerRef.current?.update(boxes);
@@ -221,11 +247,13 @@ export default function Check() {
         }
       }
 
-      // Draw every frame so the overlay stays smooth even between detections
+      // Draw every frame so the overlay stays smooth
+      // even between detections
       const boxes = trackerRef.current?.activeBoxes() ?? [];
       drawTracks(overlayRef.current, video, boxes);
 
-      // Keep React in sync for tap targets — only update when unregistered tracks change
+      // Keep React in sync for tap targets
+      // only update when unregistered tracks change
       const unregistered = boxes.filter((t) => t.result?.registered === false && t.result?.check_log_id);
       setActiveTracks((prev) => {
         const ids = unregistered.map((t) => t.result.check_log_id).join(",");
@@ -233,13 +261,17 @@ export default function Check() {
         return ids === prevIds ? prev : unregistered;
       });
 
-      setNetworkError(boxes.some((t) => t.result?.networkError));
+      const hasNetworkError = boxes.some((t) => t.result?.networkError);
+      if (hasNetworkError !== networkErrorRef.current) {
+        networkErrorRef.current = hasNetworkError;
+        setNetworkError(hasNetworkError);
+      }
 
       rafRef.current = requestAnimationFrame(loop);
     };
 
     rafRef.current = requestAnimationFrame(loop);
-  }, [modelReady]);
+  }, []);
 
   const stopAll = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -422,7 +454,9 @@ export default function Check() {
           plate_text={activeViolation.plate_text}
           onClose={() => setActiveViolation(null)}
           onIssued={() => {
-            setViolationTargets((prev) => prev.filter((t) => t.check_log_id !== activeViolation.check_log_id));
+            clearTimeout(violationTimersRef.current[activeViolation.plate_text]);
+            delete violationTimersRef.current[activeViolation.plate_text];
+            setViolationTargets((prev) => prev.filter((t) => t.plate_text !== activeViolation.plate_text));
             setActiveViolation(null);
           }}
         />

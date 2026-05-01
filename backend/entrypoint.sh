@@ -2,6 +2,7 @@
 set -e
 
 echo "[Entrypoint] Waiting for database..."
+# health-check: poll until postgres accepts connections
 until python -c "
 import os, psycopg2
 psycopg2.connect(

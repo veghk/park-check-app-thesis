@@ -1,5 +1,6 @@
 import axios from "axios";
 
+// axios instance with JWT auto-injected from localStorage
 const client = axios.create({
   baseURL: "/",
   timeout: 8000,

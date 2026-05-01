@@ -76,25 +76,16 @@ class CheckLog(models.Model):
 
 
 class Violation(models.Model):
-    """An enforcement notice issued by an enforcer against an unregistered plate."""
+    """
+    An enforcement notice issued against an unregistered plate.
+    All check data (enforcer, plate, GPS) is on the linked CheckLog.
+    """
     check_log = models.OneToOneField(CheckLog, on_delete=models.CASCADE, related_name="violation")
-    enforcer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="violations")
-    plate_text = models.CharField(max_length=16)
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
     notes = models.TextField(blank=True)
     issued_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Violation — {self.plate_text} ({self.enforcer})"
+        return f"Violation — {self.check_log.plate_text} ({self.check_log.enforcer})"
 
     class Meta:
         ordering = ["-issued_at"]
-
-
-class TestResult(models.Model):
-    """Proxy model with no DB table. Only exists to register the test viewer in Django admin."""
-    class Meta:
-        managed = False
-        verbose_name = "Test Result"
-        verbose_name_plural = "Test Results"
