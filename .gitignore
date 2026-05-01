@@ -59,7 +59,6 @@ Thumbs.db
 
 # AI / ML
 *.pt
-*.onnx
 *.weights
 runs/
 datasets/
