@@ -71,7 +71,20 @@ function warpPerspective(srcCanvas, H) {
 export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
   const model = await getModel("plateDetector");
 
-  const tensor = preprocess(canvas);
+  // Portrait camera: crop a 16:9 landscape strip from the center
+  // so the model always sees a landscape-like image
+  let src = canvas;
+  let cropOffsetY = 0;
+  if (canvas.height > canvas.width) {
+    const cropH = Math.round(canvas.width * 9 / 16);
+    cropOffsetY = Math.round((canvas.height - cropH) / 2);
+    src = document.createElement("canvas");
+    src.width = canvas.width;
+    src.height = cropH;
+    src.getContext("2d").drawImage(canvas, 0, cropOffsetY, canvas.width, cropH, 0, 0, canvas.width, cropH);
+  }
+
+  const tensor = preprocess(src);
   const inputTensor = new ort.Tensor("float32", tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
   const outputs = await runInference(model, { [model.inputNames[0]]: inputTensor });
 
@@ -82,11 +95,18 @@ export async function runDetection(canvas, threshold = DETECTION_THRESHOLD) {
   const detections = extractAllDetections(
     output0.data, output1.data,
     output0.dims[2], output1.dims[2], output1.dims[3],
-    canvas.width, canvas.height,
+    src.width, src.height,
     threshold, NMS_IOU_THRESHOLD,
   );
 
-  return detections.map(({ bbox, confidence, corners }) => ({ ...bbox, confidence, corners }));
+  return detections.map(({ bbox, confidence, corners }) => ({
+    confidence,
+    x1: bbox.x1,
+    y1: bbox.y1 + cropOffsetY,
+    x2: bbox.x2,
+    y2: bbox.y2 + cropOffsetY,
+    corners: corners?.map(([cx, cy]) => [cx, cy + cropOffsetY]) ?? null,
+  }));
 }
 
 // Perspective-corrects a plate region

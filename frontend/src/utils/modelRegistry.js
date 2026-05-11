@@ -7,9 +7,11 @@ const hasWebGPU = !!navigator.gpu;
 const hasWebGL  = !!document.createElement("canvas").getContext("webgl2");
 const GPU_PROVIDERS = hasWebGPU ? ["webgpu", "wasm"] : hasWebGL ? ["webgl", "wasm"] : ["wasm"];
 
+// WebGPU on mobile Chrome produces all-zero confidence scores for this model
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+
 const REGISTRY = {
-  // Large model - benefits from GPU acceleration
-  plateDetector: { url: "/models/plate-segmentor.onnx", providers: GPU_PROVIDERS },
+  plateDetector: { url: "/models/plate-segmentor.onnx", providers: isMobile ? ["wasm"] : GPU_PROVIDERS },
   // Small model - WebGPU causes "Session already started" errors in ORT 1.18
   plateOCR:      { url: "/models/plate-ocr.onnx",       providers: ["wasm"] },
 };
