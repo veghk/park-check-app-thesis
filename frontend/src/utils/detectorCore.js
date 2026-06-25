@@ -54,25 +54,32 @@ export function morphClose(mask, w, h, r = 2) {
   return erode(dilate(mask, w, h, r), w, h, r);
 }
 
-// Returns the bounding box of a binary mask as 4 corners [TL, TR, BR, BL]
-// min/max extents - simpler and stable since the mask is already a tight fit
+// Returns the 4 actual corners of a binary mask as [TL, TR, BR, BL]
+// Uses diagonal extreme points: TL=min(x+y), TR=max(x-y), BR=max(x+y), BL=min(x-y)
+// This gives real plate corners even when the plate is tilted (unlike axis-aligned bbox)
 export function maskBbox(mask, w, h, scaleX, scaleY) {
-  let minX = w, minY = h, maxX = 0, maxY = 0;
+  let tlS =  Infinity, tlX = 0, tlY = 0;
+  let trS = -Infinity, trX = 0, trY = 0;
+  let brS = -Infinity, brX = 0, brY = 0;
+  let blS =  Infinity, blX = 0, blY = 0;
+  let found = false;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (!mask[y * w + x]) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      found = true;
+      const s1 = x + y, s2 = x - y;
+      if (s1 < tlS) { tlS = s1; tlX = x; tlY = y; }
+      if (s2 > trS) { trS = s2; trX = x; trY = y; }
+      if (s1 > brS) { brS = s1; brX = x; brY = y; }
+      if (s2 < blS) { blS = s2; blX = x; blY = y; }
     }
   }
-  if (minX > maxX) return null;
+  if (!found) return null;
   return [
-    [minX * scaleX, minY * scaleY],
-    [maxX * scaleX, minY * scaleY],
-    [maxX * scaleX, maxY * scaleY],
-    [minX * scaleX, maxY * scaleY],
+    [tlX * scaleX, tlY * scaleY],
+    [trX * scaleX, trY * scaleY],
+    [brX * scaleX, brY * scaleY],
+    [blX * scaleX, blY * scaleY],
   ];
 }
 
