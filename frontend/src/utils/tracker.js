@@ -1,4 +1,4 @@
-import { STABILIZER_DELAY_MS, STABILIZER_TOLERANCE } from "../config";
+import { STABILIZER_DELAY_MS, STABILIZER_TOLERANCE, MAX_TRACKS, MISS_LIMIT } from "../config";
 
 let _nextId = 1;
 
@@ -71,9 +71,9 @@ export class Tracker {
       if (!matched.has(track)) track.missCount++;
     }
 
-    this._tracks = this._tracks.filter(t => t.missCount < 2);
+    this._tracks = this._tracks.filter(t => t.missCount < MISS_LIMIT);
 
-    if (this._tracks.length > 6) {
+    if (this._tracks.length > MAX_TRACKS) {
       this._tracks = [];
       return;
     }

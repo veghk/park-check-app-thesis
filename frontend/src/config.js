@@ -24,6 +24,12 @@ export const NMS_IOU_THRESHOLD = 0.45;
 // must be multiple of 32, trained at 416
 export const INPUT_SIZE = 416;
 
+// max concurrent tracks before assuming noise and resetting
+export const MAX_TRACKS = 6;
+
+// frames a track can go undetected before being dropped
+export const MISS_LIMIT = 2;
+
 // warped plate canvas size
 // European plate aspect ~4:1
 export const PLATE_W = 280;
