@@ -58,26 +58,18 @@ function drawTracks(canvas, video, tracks) {
     ctx.strokeStyle = color;
     ctx.lineWidth   = 3;
 
-    if (box.corners) {
-      ctx.beginPath();
-      ctx.moveTo(box.corners[0][0], box.corners[0][1]);
-      for (let i = 1; i < box.corners.length; i++) ctx.lineTo(box.corners[i][0], box.corners[i][1]);
-      ctx.closePath();
-      ctx.stroke();
-    } else {
-      ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
-    }
+    ctx.strokeRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
 
     if (result) {
       const label =
         result.offline       ? `${result.plate_text} · saved offline` :
         result.networkError  ? `${result.plate_text} · server unreachable` :
-        result.registered    ? `${result.plate_text} · ${result.owner_name}` :
+        result.registered    ? `${result.plate_text} · registered` :
         result.plate_text    ? `${result.plate_text} · not registered` :
                                "no text read";
 
-      const bx = box.corners ? box.corners[3][0] : box.x1;
-      const by = box.corners ? box.corners[3][1] : box.y2;
+      const bx = box.x1;
+      const by = box.y2;
 
       ctx.font = "bold 15px sans-serif";
       const tw = ctx.measureText(label).width;
