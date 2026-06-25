@@ -111,12 +111,14 @@ export default function Check() {
   const [networkError,     setNetworkError]     = useState(false);
 
   const violationTimersRef = useRef({});
-  // Refs so startLoop never needs modelReady/networkError in its dep array
+  // refs avoid stale closures in rAF loop
   const modelReadyRef    = useRef(false);
   const networkErrorRef  = useRef(false);
 
+  // keep refs in sync with state
   useEffect(() => { modelReadyRef.current = modelReady; }, [modelReady]);
 
+  // clear violation timers on unmount
   useEffect(() => {
     return () => { Object.values(violationTimersRef.current).forEach(clearTimeout); };
   }, []);
@@ -153,6 +155,7 @@ export default function Check() {
     );
   }, []);
 
+  // retry offline queue on reconnect
   const syncPending = useCallback(async () => {
     const pending = getPending();
     if (!pending.length) return;
@@ -172,10 +175,7 @@ export default function Check() {
     setPendingCount(remaining.length);
   }, []);
 
-  // Called by the tracker when a plate has been stable long enough
-  // runs OCR + backend check
-  // writes the result back onto the track object
-  // camera keeps running the whole time
+  // OCR + backend check, called by tracker
   const checkPlate = useCallback(async (track) => {
     const video = videoRef.current;
     if (!video) return;
@@ -220,6 +220,7 @@ export default function Check() {
     }
   }, []);
 
+  // main detection loop
   const startLoop = useCallback(() => {
     if (!videoRef.current) return;
     const offscreen = document.createElement("canvas");
@@ -273,12 +274,14 @@ export default function Check() {
     rafRef.current = requestAnimationFrame(loop);
   }, []);
 
+  // stop camera and rAF loop
   const stopAll = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
 
+  // init: open camera, load model
   useEffect(() => {
     let cancelled = false;
 
@@ -318,11 +321,13 @@ export default function Check() {
     return () => { cancelled = true; stopAll(); };
   }, [checkPlate, stopAll]);
 
+  // sync pending on reconnect
   useEffect(() => {
     window.addEventListener("online", syncPending);
     return () => window.removeEventListener("online", syncPending);
   }, [syncPending]);
 
+  // start loop when camera is ready
   useEffect(() => {
     if (appState === STATE.SCANNING) startLoop();
     return () => cancelAnimationFrame(rafRef.current);
